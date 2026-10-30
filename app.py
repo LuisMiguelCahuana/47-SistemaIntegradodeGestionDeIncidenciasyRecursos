@@ -328,18 +328,21 @@ def interfaz_actualizar_registros():
             )
 
             registrar_fecha = st.checkbox(
-                f"Registrar {cfg['fecha_label'].lower()}",
+                f"Guardar {cfg['fecha_label'].lower()}",
                 value=bool(fecha_guardada)
             )
 
-            nueva_fecha = None
-            if registrar_fecha:
-                nueva_fecha = st.date_input(
-                    f"{cfg['fecha_label']} (fecha real del evento)",
-                    value=fecha_actual or datetime.now().date(),
-                    format="DD/MM/YYYY",
-                    help="Selecciona la fecha efectiva. Puedes elegir una fecha pasada si el coordinador registra la novedad con retraso."
+            # El selector se muestra siempre para que el coordinador
+            # pueda elegir una fecha pasada aunque registre tarde.
+            nueva_fecha = st.date_input(
+                f"{cfg['fecha_label']} (selecciona la fecha real)",
+                value=fecha_actual or datetime.now().date(),
+                format="DD/MM/YYYY",
+                help=(
+                    "Puedes seleccionar cualquier fecha, incluso anterior a hoy. "
+                    "La fecha se guarda si marcas la casilla de arriba."
                 )
+            )
 
             nuevo_estado = st.selectbox(
                 "Estado",
