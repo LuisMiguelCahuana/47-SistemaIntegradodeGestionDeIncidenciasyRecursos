@@ -349,112 +349,154 @@ def cerrar_sesion():
 
 
 def mostrar_inicio_sesion():
-    """Pantalla de acceso moderna, centrada horizontal y verticalmente."""
+    """Pantalla de acceso SIGIR: tarjeta única, compacta y centrada."""
 
     st.markdown(
         """
         <style>
-        /* Centrado de la pantalla de acceso */
-        [data-testid="stAppViewContainer"] .main .block-container {
-            padding-top: 0.8rem;
-            padding-bottom: 1rem;
-            max-width: 1180px;
-        }
-        .login-wrap {
+        /* Centra verticalmente todo el contenido de la pantalla de acceso */
+        section.main > div.block-container {
+            min-height: 100vh;
             display: flex;
-            align-items: center;
+            flex-direction: column;
             justify-content: center;
-            padding: max(28px, calc((82vh - 420px) / 2)) 12px 12px 12px;
+            padding-top: 1rem !important;
+            padding-bottom: 1rem !important;
+            max-width: 100% !important;
         }
-        .login-card {
+
+        /* Columna central */
+        div[data-testid="stHorizontalBlock"] {
+            align-items: center;
+        }
+
+        /* Tarjeta única del login */
+        div[data-testid="stForm"] {
             width: 100%;
-            max-width: 460px;
-            padding: 34px 34px 26px 34px;
-            border: 1px solid rgba(148,163,184,.22);
-            border-radius: 22px;
-            background: linear-gradient(145deg, #171f2d 0%, #101722 100%);
-            box-shadow: 0 22px 65px rgba(0,0,0,.38);
-            text-align: center;
+            max-width: 430px;
+            margin: 0 auto;
+            padding: 30px 32px 28px 32px;
+            border: 1px solid rgba(148, 163, 184, .24);
+            border-radius: 24px;
+            background:
+                radial-gradient(circle at 85% 0%, rgba(37,99,235,.20), transparent 38%),
+                linear-gradient(145deg, #182235 0%, #101827 58%, #0d1522 100%);
+            box-shadow: 0 24px 70px rgba(0,0,0,.42);
         }
-        .login-logo {
-            width: 68px;
-            height: 68px;
+
+        .sigir-login-brand {
+            text-align: center;
+            padding: 0 0 18px 0;
+        }
+        .sigir-login-icon {
+            width: 62px;
+            height: 62px;
             margin: 0 auto 14px auto;
-            border-radius: 20px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 34px;
-            background: linear-gradient(135deg, #2563eb, #0ea5e9);
-            box-shadow: 0 10px 28px rgba(14,165,233,.25);
+            border-radius: 19px;
+            font-size: 30px;
+            background: linear-gradient(135deg, #2563eb, #06b6d4);
+            box-shadow: 0 10px 28px rgba(37,99,235,.28);
         }
-        .login-title {
+        .sigir-login-brand h1 {
             margin: 0;
             color: #f8fafc;
-            font-size: 31px;
-            font-weight: 800;
-            letter-spacing: 1.2px;
+            font-size: 32px;
+            line-height: 1.15;
+            font-weight: 850;
+            letter-spacing: 2px;
         }
-        .login-subtitle {
-            color: #9caec2;
-            font-size: 12px;
+        .sigir-login-brand p {
+            margin: 9px 0 0 0;
+            color: #9fb2ca;
+            font-size: 11px;
             line-height: 1.6;
-            letter-spacing: .7px;
-            margin: 7px 0 8px 0;
+            letter-spacing: 1.05px;
         }
-        .login-welcome {
-            color: #e2e8f0;
-            font-size: 15px;
-            margin: 18px 0 4px 0;
+        .sigir-login-welcome {
+            text-align: center;
+            color: #f1f5f9;
+            font-size: 17px;
+            font-weight: 650;
+            margin: 2px 0 3px 0;
         }
-        .login-hint {
-            color: #94a3b8;
+        .sigir-login-help {
+            text-align: center;
+            color: #9aaac0;
             font-size: 12px;
-            margin: 0 0 16px 0;
+            margin: 0 0 20px 0;
         }
-        div[data-testid="stForm"] {
-            border: 1px solid rgba(148,163,184,.2);
-            border-radius: 16px;
-            padding: 22px;
-            background: rgba(15,23,42,.55);
+
+        div[data-testid="stForm"] label {
+            color: #e2e8f0;
+            font-weight: 600;
         }
         div[data-testid="stForm"] input {
-            border-radius: 10px;
+            min-height: 44px;
+            border-radius: 11px;
+            background: rgba(255,255,255,.07);
+            border: 1px solid rgba(148,163,184,.18);
+        }
+        div[data-testid="stForm"] input:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 1px #3b82f6;
         }
         div[data-testid="stForm"] button[kind="primaryFormSubmit"],
         div[data-testid="stForm"] button {
-            min-height: 46px;
-            border-radius: 10px;
-            font-weight: 700;
+            min-height: 47px;
+            border-radius: 12px;
+            font-weight: 750;
+            letter-spacing: .2px;
+            background: linear-gradient(90deg, #2563eb, #0891b2);
+            border: 0;
+            color: white;
+            transition: filter .2s ease, transform .2s ease;
         }
+        div[data-testid="stForm"] button:hover {
+            filter: brightness(1.12);
+            transform: translateY(-1px);
+        }
+
+        /* En pantallas pequeñas, conservar el centrado sin recortar */
         @media (max-width: 640px) {
-            .login-wrap { padding: 24px 8px 8px 8px; }
-            .login-card { padding: 25px 16px 20px 16px; }
-            .login-title { font-size: 26px; }
+            section.main > div.block-container {
+                min-height: 100svh;
+                padding: 12px 10px !important;
+            }
+            div[data-testid="stForm"] {
+                padding: 24px 18px 22px 18px;
+                border-radius: 19px;
+            }
+            .sigir-login-brand h1 {
+                font-size: 28px;
+            }
         }
         </style>
-        <div class="login-wrap">
-            <div class="login-card">
-                <div class="login-logo">📋</div>
-                <h1 class="login-title">SIGIR</h1>
-                <div class="login-subtitle">
-                    SISTEMA INTEGRADO DE GESTIÓN<br>
-                    DE INCIDENCIAS Y RECURSOS
-                </div>
-                <div class="login-welcome">Bienvenido</div>
-                <div class="login-hint">
-                    Ingresa tus credenciales para acceder al sistema
-                </div>
-            </div>
-        </div>
         """,
         unsafe_allow_html=True
     )
 
-    # Formulario centrado debajo del encabezado visual.
     izquierda, centro, derecha = st.columns([1, 1.05, 1])
     with centro:
         with st.form("form_login_sigir"):
+            st.markdown(
+                """
+                <div class="sigir-login-brand">
+                    <div class="sigir-login-icon">📋</div>
+                    <h1>SIGIR</h1>
+                    <p>SISTEMA INTEGRADO DE GESTIÓN<br>
+                    DE INCIDENCIAS Y RECURSOS</p>
+                </div>
+                <div class="sigir-login-welcome">Bienvenido</div>
+                <div class="sigir-login-help">
+                    Ingresa tus credenciales para continuar
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
             usuario_ingresado = st.text_input(
                 "Usuario",
                 placeholder="Escribe tu usuario"
@@ -515,8 +557,6 @@ def mostrar_inicio_sesion():
                     "de servicio tenga permiso de lectura sobre la hoja de usuarios."
                 )
                 st.caption(f"Detalle técnico: {error}")
-
-
 # =====================================================
 # ACTUALIZACIÓN DE REGISTROS YA REPORTADOS
 # =====================================================
