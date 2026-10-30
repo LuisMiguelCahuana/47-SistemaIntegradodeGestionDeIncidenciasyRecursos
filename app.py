@@ -763,8 +763,8 @@ elif modulo == "🚗 Vehículos":
     st.subheader("🚗 Registro de incidencias de vehículos")
 
     st.info(
-        "El contrato, la UUNN y la placa se seleccionan desde el padrón maestro "
-        "de vehículos. Los datos se actualizan automáticamente desde Google Sheets."
+        "Selecciona el contrato, la UUNN y la placa del vehículo "
+        "desde el padrón maestro de Google Sheets."
     )
 
     try:
@@ -778,144 +778,176 @@ elif modulo == "🚗 Vehículos":
             st.warning("El padrón no contiene contratos disponibles.")
             st.stop()
 
-        # Filtros dependientes en una sola fila
+        # Los tres filtros se muestran en una sola fila.
         col_contrato, col_uunn, col_placa = st.columns(3)
 
         with col_contrato:
             contrato = st.selectbox(
-                "Contrato *",
-                contratos_disponibles,
+                "Seleccione contrato *",
+                ["Seleccione..."] + contratos_disponibles,
                 key="vehiculo_contrato"
             )
 
-        registros_contrato = [
-            fila for fila in padron
-            if fila["CONTRATO"] == contrato
-        ]
+        if contrato != "Seleccione...":
+            registros_contrato = [
+                fila for fila in padron
+                if fila["CONTRATO"] == contrato
+            ]
 
-        uunn_disponibles = sorted({
-            fila["UUNN"] for fila in registros_contrato if fila["UUNN"]
-        })
+            uunn_disponibles = sorted({
+                fila["UUNN"] for fila in registros_contrato if fila["UUNN"]
+            })
 
-        with col_uunn:
-            uunn = st.selectbox(
-                "UUNN *",
-                uunn_disponibles,
-                key="vehiculo_uunn"
-            )
-
-        registros_unidad = [
-            fila for fila in registros_contrato
-            if fila["UUNN"] == uunn
-        ]
-
-        placas_disponibles = sorted({
-            fila["PLACA"] for fila in registros_unidad if fila["PLACA"]
-        })
-
-        with col_placa:
-            placa = st.selectbox(
-                "Placa del vehículo *",
-                placas_disponibles,
-                key="vehiculo_placa"
-            )
-
-        fila_vehiculo = next(
-            (
-                fila for fila in registros_unidad
-                if fila["PLACA"] == placa
-            ),
-            {}
-        )
-
-        if fila_vehiculo.get("CENTRO DE COSTOS"):
-            st.caption(
-                f"Centro de costos asociado: {fila_vehiculo['CENTRO DE COSTOS']}"
-            )
-
-        with st.form("form_vehiculo", clear_on_submit=True):
-
-            # Tipo de incidencia y fecha de reporte en una fila
-            col_tipo, col_fecha = st.columns(2)
-
-            with col_tipo:
-                tipo_incidencia = st.selectbox(
-                    "Tipo de incidencia *",
-                    [
-                        "FALLA MECANICA",
-                        "ACCIDENTE",
-                        "MANTENIMIENTO PREVENTIVO",
-                        "MANTENIMIENTO CORRECTIVO",
-                        "DOCUMENTACION",
-                        "OTRO"
-                    ]
+            with col_uunn:
+                uunn = st.selectbox(
+                    "Seleccione UUNN *",
+                    ["Seleccione..."] + uunn_disponibles,
+                    key="vehiculo_uunn"
+                )
+        else:
+            uunn = "Seleccione..."
+            with col_uunn:
+                st.selectbox(
+                    "Seleccione UUNN *",
+                    ["Seleccione..."],
+                    disabled=True,
+                    key="vehiculo_uunn_bloqueado"
                 )
 
-            with col_fecha:
-                fecha_reporte = st.date_input(
-                    "Fecha de reporte *",
-                    format="DD/MM/YYYY"
+        if contrato != "Seleccione..." and uunn != "Seleccione...":
+            registros_unidad = [
+                fila for fila in registros_contrato
+                if fila["UUNN"] == uunn
+            ]
+
+            placas_disponibles = sorted({
+                fila["PLACA"] for fila in registros_unidad if fila["PLACA"]
+            })
+
+            with col_placa:
+                placa = st.selectbox(
+                    "Seleccione placa del vehículo *",
+                    ["Seleccione..."] + placas_disponibles,
+                    key="vehiculo_placa"
+                )
+        else:
+            placa = "Seleccione..."
+            with col_placa:
+                st.selectbox(
+                    "Seleccione placa del vehículo *",
+                    ["Seleccione..."],
+                    disabled=True,
+                    key="vehiculo_placa_bloqueada"
                 )
 
-            # Descripción y estado en una misma fila
-            col_descripcion, col_estado = st.columns([2, 1])
-
-            with col_descripcion:
-                descripcion = st.text_area(
-                    "Descripción de la incidencia *",
-                    placeholder="Describa la falla o incidencia...",
-                    height=120
-                )
-
-            with col_estado:
-                estado = st.selectbox(
-                    "Estado *",
-                    [
-                        "PENDIENTE",
-                        "REPUESTO"
-                    ]
-                )
-
-            observaciones = st.text_area(
-                "Observaciones",
-                placeholder="Ej. Se asignó otra camioneta..."
+        if (
+            contrato == "Seleccione..."
+            or uunn == "Seleccione..."
+            or placa == "Seleccione..."
+        ):
+            st.info(
+                "Selecciona primero el contrato, después la UUNN "
+                "y finalmente la placa para habilitar el registro."
+            )
+        else:
+            fila_vehiculo = next(
+                (
+                    fila for fila in registros_unidad
+                    if fila["PLACA"] == placa
+                ),
+                {}
             )
 
-            guardar = st.form_submit_button(
-                "💾 GUARDAR REGISTRO",
-                use_container_width=True
-            )
+            if fila_vehiculo.get("CENTRO DE COSTOS"):
+                st.caption(
+                    f"Centro de costos asociado: {fila_vehiculo['CENTRO DE COSTOS']}"
+                )
 
-            if guardar:
+            with st.form("form_vehiculo", clear_on_submit=True):
 
-                if not descripcion.strip():
-                    st.warning("Completa la descripción de la incidencia.")
+                col_tipo, col_fecha = st.columns(2)
 
-                elif conexion_ok:
-
-                    datos = {
-                        "CONTRATO": contrato,
-                        "UUNN": uunn,
-                        "PLACA": placa,
-                        "TIPO_INCIDENCIA": tipo_incidencia,
-                        "DESCRIPCION": descripcion.strip(),
-                        "FECHA_REPORTE": fecha_texto(fecha_reporte),
-                        "FECHA_REPOSICION": "",
-                        "ESTADO": estado,
-                        "OBSERVACIONES": observaciones.strip()
-                    }
-
-                    ok, mensaje = guardar_registro(
-                        "Vehiculo",
-                        HEADERS_VEHICULO,
-                        datos
+                with col_tipo:
+                    tipo_incidencia = st.selectbox(
+                        "Tipo de incidencia *",
+                        [
+                            "FALLA MECANICA",
+                            "ACCIDENTE",
+                            "MANTENIMIENTO PREVENTIVO",
+                            "MANTENIMIENTO CORRECTIVO",
+                            "DOCUMENTACION",
+                            "OTRO"
+                        ]
                     )
 
-                    if ok:
-                        st.success("✅ " + mensaje)
-                        st.balloons()
-                    else:
-                        st.error(mensaje)
+                with col_fecha:
+                    fecha_reporte = st.date_input(
+                        "Fecha de reporte *",
+                        format="DD/MM/YYYY"
+                    )
+
+                col_descripcion, col_estado = st.columns([2, 1])
+
+                with col_descripcion:
+                    descripcion = st.text_area(
+                        "Descripción de la incidencia *",
+                        placeholder="Describa la falla o incidencia...",
+                        height=120
+                    )
+
+                with col_estado:
+                    estado = st.selectbox(
+                        "Estado *",
+                        ["PENDIENTE", "REPUESTO"]
+                    )
+
+                observaciones = st.text_area(
+                    "Observaciones",
+                    placeholder="Ej. Se asignó otra camioneta..."
+                )
+
+                guardar = st.form_submit_button(
+                    "💾 GUARDAR REGISTRO",
+                    use_container_width=True
+                )
+
+                if guardar:
+
+                    if not descripcion.strip():
+                        st.warning("Completa la descripción de la incidencia.")
+
+                    elif estado == "REPUESTO":
+                        st.warning(
+                            "Registra inicialmente la incidencia como PENDIENTE. "
+                            "Cuando el vehículo vuelva al servicio, utiliza "
+                            "'Actualizar registros' para registrar la fecha real."
+                        )
+
+                    elif conexion_ok:
+
+                        datos = {
+                            "CONTRATO": contrato,
+                            "UUNN": uunn,
+                            "PLACA": placa,
+                            "TIPO_INCIDENCIA": tipo_incidencia,
+                            "DESCRIPCION": descripcion.strip(),
+                            "FECHA_REPORTE": fecha_texto(fecha_reporte),
+                            "FECHA_REPOSICION": "",
+                            "ESTADO": estado,
+                            "OBSERVACIONES": observaciones.strip()
+                        }
+
+                        ok, mensaje = guardar_registro(
+                            "Vehiculo",
+                            HEADERS_VEHICULO,
+                            datos
+                        )
+
+                        if ok:
+                            st.success("✅ " + mensaje)
+                            st.balloons()
+                        else:
+                            st.error(mensaje)
 
     except Exception as e:
         st.error(
