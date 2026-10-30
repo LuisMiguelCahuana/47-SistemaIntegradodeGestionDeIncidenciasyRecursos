@@ -185,6 +185,210 @@ def fecha_texto(fecha):
     return fecha.strftime("%d/%m/%Y")
 
 
+
+# =====================================================
+# ACTUALIZACIÓN DE REGISTROS YA REPORTADOS
+# =====================================================
+
+def buscar_columna(encabezados, nombre):
+    """Devuelve el índice (base 1) de una columna por nombre normalizado."""
+    objetivo = normalizar(nombre)
+    for indice, encabezado in enumerate(encabezados, start=1):
+        if normalizar(encabezado) == objetivo:
+            return indice
+    raise ValueError(f"No se encontró la columna: {nombre}")
+
+
+def convertir_fecha_existente(valor):
+    """Convierte fechas guardadas como texto a date; devuelve None si está vacío."""
+    if not valor:
+        return None
+    for formato in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y"):
+        try:
+            return datetime.strptime(str(valor).strip(), formato).date()
+        except ValueError:
+            pass
+    return None
+
+
+def actualizar_celda(hoja, encabezados, fila, columna, valor):
+    """Actualiza una celda existente sin crear una fila nueva."""
+    col = buscar_columna(encabezados, columna)
+    hoja.update_cell(fila, col, valor)
+
+
+def interfaz_actualizar_registros():
+    st.subheader("📝 Actualizar incidencias reportadas")
+    st.info(
+        "Selecciona una incidencia pendiente para registrar su incorporación, "
+        "reposición o reparación. Esta opción modifica la fila existente; "
+        "no crea un registro duplicado."
+    )
+
+    tipo = st.selectbox(
+        "Selecciona el tipo de recurso",
+        ["Personal", "Vehículo", "Material"]
+    )
+
+    configuracion = {
+        "Personal": {
+            "hoja": "Personal",
+            "fecha": "FECHA_INCORPRACION / NUEVO PERSONAL",
+            "fecha_label": "Fecha de incorporación del nuevo personal",
+            "inicio": "FECHA_SALIDA",
+            "identificadores": [
+                "CONTRATO", "PERSONAL", "CARGO", "TIPO_INCIDENCIA",
+                "FECHA_SALIDA", "ESTADO"
+            ]
+        },
+        "Vehículo": {
+            "hoja": "Vehiculo",
+            "fecha": "FECHA_REPOSICION",
+            "fecha_label": "Fecha de reposición / retorno a servicio",
+            "inicio": "FECHA_REPORTE",
+            "identificadores": [
+                "CONTRATO", "UUNN", "PLACA", "TIPO_INCIDENCIA",
+                "FECHA_REPORTE", "ESTADO"
+            ]
+        },
+        "Material": {
+            "hoja": "Material",
+            "fecha": "FECHA_REPOSICION",
+            "fecha_label": "Fecha de reposición / atención",
+            "inicio": "FECHA_INICIO",
+            "identificadores": [
+                "CONTRATO", "UUNN", "MATERIAL/EQUIPO Y HERRAMIENTA",
+                "CANTIDAD_FALTANTE", "FECHA_INICIO", "ESTADO"
+            ]
+        }
+    }
+
+    cfg = configuracion[tipo]
+
+    try:
+        hoja = spreadsheet.worksheet(cfg["hoja"])
+        valores = hoja.get_all_values()
+
+        if not valores or len(valores) < 2:
+            st.warning("Esta pestaña todavía no contiene registros.")
+            return
+
+        encabezados = valores[0]
+        encabezados_norm = [normalizar(x) for x in encabezados]
+
+        idx_estado = buscar_columna(encabezados, "ESTADO") - 1
+        filas_pendientes = []
+
+        for numero_fila, fila in enumerate(valores[1:], start=2):
+            estado_actual = fila[idx_estado].strip().upper() if idx_estado < len(fila) else ""
+            if estado_actual == "PENDIENTE":
+                filas_pendientes.append((numero_fila, fila))
+
+        if not filas_pendientes:
+            st.success("No hay incidencias pendientes en este módulo.")
+            return
+
+        def etiqueta_registro(item):
+            numero_fila, fila = item
+            datos_fila = {
+                encabezados_norm[i]: fila[i] if i < len(fila) else ""
+                for i in range(len(encabezados_norm))
+            }
+            partes = [f"Fila {numero_fila}"]
+            for campo in cfg["identificadores"]:
+                valor = datos_fila.get(normalizar(campo), "")
+                if valor:
+                    partes.append(f"{campo}: {valor}")
+            return " | ".join(partes)
+
+        seleccionado = st.selectbox(
+            "Selecciona la incidencia pendiente que deseas actualizar",
+            filas_pendientes,
+            format_func=etiqueta_registro
+        )
+
+        numero_fila, fila_seleccionada = seleccionado
+        datos_fila = {
+            encabezados_norm[i]: fila_seleccionada[i] if i < len(fila_seleccionada) else ""
+            for i in range(len(encabezados_norm))
+        }
+
+        st.caption(f"Registro seleccionado: fila {numero_fila} de la pestaña {cfg['hoja']}.")
+
+        fecha_guardada = datos_fila.get(normalizar(cfg["fecha"]), "")
+        fecha_actual = convertir_fecha_existente(fecha_guardada)
+        estado_actual = datos_fila.get(normalizar("ESTADO"), "PENDIENTE").upper()
+        observacion_actual = datos_fila.get(normalizar("OBSERVACIONES"), "")
+
+        with st.form("form_actualizar_incidencia"):
+            st.markdown("**Datos de cierre de la incidencia**")
+
+            registrar_fecha = st.checkbox(
+                f"Registrar {cfg['fecha_label'].lower()}",
+                value=bool(fecha_guardada)
+            )
+
+            nueva_fecha = None
+            if registrar_fecha:
+                nueva_fecha = st.date_input(
+                    cfg["fecha_label"],
+                    value=fecha_actual or datetime.now().date(),
+                    format="DD/MM/YYYY"
+                )
+
+            nuevo_estado = st.selectbox(
+                "Estado",
+                ["PENDIENTE", "REPUESTO"],
+                index=1 if estado_actual == "REPUESTO" else 0
+            )
+
+            nuevas_observaciones = st.text_area(
+                "Observaciones / acciones realizadas",
+                value=observacion_actual,
+                placeholder="Ej. Se incorporó un nuevo técnico / se asignó otra camioneta / se recibieron los materiales."
+            )
+
+            confirmar = st.form_submit_button(
+                "💾 ACTUALIZAR REGISTRO",
+                use_container_width=True
+            )
+
+            if confirmar:
+                if nuevo_estado == "REPUESTO" and nueva_fecha is None:
+                    st.warning(
+                        "Para marcar la incidencia como REPUESTO, "
+                        "debes registrar la fecha de incorporación o reposición."
+                    )
+                else:
+                    try:
+                        if registrar_fecha and nueva_fecha:
+                            actualizar_celda(
+                                hoja, encabezados, numero_fila,
+                                cfg["fecha"], fecha_texto(nueva_fecha)
+                            )
+
+                        actualizar_celda(
+                            hoja, encabezados, numero_fila,
+                            "ESTADO", nuevo_estado
+                        )
+
+                        actualizar_celda(
+                            hoja, encabezados, numero_fila,
+                            "OBSERVACIONES", nuevas_observaciones.strip()
+                        )
+
+                        st.success(
+                            f"Registro de la fila {numero_fila} actualizado correctamente."
+                        )
+                        st.rerun()
+
+                    except Exception as error:
+                        st.error(f"No se pudo actualizar el registro: {error}")
+
+    except Exception as error:
+        st.error(f"No se pudo consultar la pestaña {cfg['hoja']}: {error}")
+
+
 # =====================================================
 # ENCABEZADOS DE LAS TRES HOJAS
 # =====================================================
@@ -255,7 +459,8 @@ modulo = st.sidebar.radio(
     [
         "👤 Personal",
         "🚗 Vehículos",
-        "📦 Materiales"
+        "📦 Materiales",
+        "📝 Actualizar registros"
     ]
 )
 
@@ -266,10 +471,19 @@ st.sidebar.caption("Registro de incidencias y disponibilidad de recursos.")
 st.sidebar.caption("Versión 1.0")
 
 # =====================================================
+# ACTUALIZAR REGISTROS EXISTENTES
+# =====================================================
+
+if modulo == "📝 Actualizar registros":
+
+    if conexion_ok:
+        interfaz_actualizar_registros()
+
+# =====================================================
 # FORMULARIO 1: PERSONAL
 # =====================================================
 
-if modulo == "👤 Personal":
+elif modulo == "👤 Personal":
 
     st.subheader("👤 Registro de incidencias de personal")
 
