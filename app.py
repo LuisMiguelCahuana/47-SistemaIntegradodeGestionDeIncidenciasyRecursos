@@ -322,6 +322,10 @@ def interfaz_actualizar_registros():
 
         with st.form("form_actualizar_incidencia"):
             st.markdown("**Datos de cierre de la incidencia**")
+            st.caption(
+                "Puedes registrar la fecha real en que ocurrió la incorporación, "
+                "reparación o reposición, aunque estés actualizando el sistema días después."
+            )
 
             registrar_fecha = st.checkbox(
                 f"Registrar {cfg['fecha_label'].lower()}",
@@ -331,9 +335,10 @@ def interfaz_actualizar_registros():
             nueva_fecha = None
             if registrar_fecha:
                 nueva_fecha = st.date_input(
-                    cfg["fecha_label"],
+                    f"{cfg['fecha_label']} (fecha real del evento)",
                     value=fecha_actual or datetime.now().date(),
-                    format="DD/MM/YYYY"
+                    format="DD/MM/YYYY",
+                    help="Selecciona la fecha efectiva. Puedes elegir una fecha pasada si el coordinador registra la novedad con retraso."
                 )
 
             nuevo_estado = st.selectbox(
@@ -370,6 +375,25 @@ def interfaz_actualizar_registros():
                         actualizar_celda(
                             hoja, encabezados, numero_fila,
                             "ESTADO", nuevo_estado
+                        )
+
+                        # Registrar también cuándo se digitó la actualización.
+                        # Esta columna se agrega al final si todavía no existe.
+                        encabezados_actuales = hoja.row_values(1)
+                        try:
+                            col_fecha_actualizacion = buscar_columna(
+                                encabezados_actuales, "FECHA_ACTUALIZACION"
+                            )
+                        except ValueError:
+                            col_fecha_actualizacion = len(encabezados_actuales) + 1
+                            if col_fecha_actualizacion > hoja.col_count:
+                                hoja.add_cols(col_fecha_actualizacion - hoja.col_count)
+                            hoja.update_cell(1, col_fecha_actualizacion, "FECHA_ACTUALIZACION")
+
+                        hoja.update_cell(
+                            numero_fila,
+                            col_fecha_actualizacion,
+                            datetime.now().strftime("%d/%m/%Y %H:%M:%S")
                         )
 
                         actualizar_celda(
