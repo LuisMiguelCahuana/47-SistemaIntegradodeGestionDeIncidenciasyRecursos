@@ -198,7 +198,7 @@ HEADERS_PERSONAL = [
     "CARGO",
     "TIPO_INCIDENCIA",
     "FECHA_SALIDA",
-    "FECHA_INCORPORACION DEL NUEVO PERSONAL",
+    "FECHA_INCORPRACION / NUEVO PERSONAL",
     "ESTADO",
     "OBSERVACIONES"
 ]
@@ -411,7 +411,7 @@ if modulo == "👤 Personal":
                     "CARGO": cargo.strip().upper(),
                     "TIPO_INCIDENCIA": tipo_incidencia,
                     "FECHA_SALIDA": fecha_texto(fecha_salida),
-                    "FECHA_INCORPORACION DEL NUEVO PERSONAL":
+                    "FECHA_INCORPRACION / NUEVO PERSONAL":
                         fecha_texto(fecha_incorporacion),
                     "ESTADO": estado,
                     "OBSERVACIONES": observaciones.strip()
