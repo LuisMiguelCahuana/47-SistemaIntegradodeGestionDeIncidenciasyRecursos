@@ -18,6 +18,7 @@ st.set_page_config(
 )
 
 SPREADSHEET_ID = "1AJ94Nrvlg7T4994K3qD_gD7dv6JZ563hJSf8hvPhOTA"
+PADRON_VEHICULOS_ID = "1osj3Usp1MhN0U97r7E4W2tYXNa9kmmNDtQRE6MkAQ_U"
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -78,6 +79,79 @@ except Exception as e:
     conexion_ok = False
     st.error("No se pudo conectar con Google Sheets.")
     st.error(f"Detalle: {e}")
+
+
+# =====================================================
+# PADRÓN MAESTRO DE VEHÍCULOS
+# =====================================================
+
+@st.cache_data(ttl=300)
+def cargar_padron_vehiculos():
+    """
+    Lee el primer tab del padrón externo.
+    Columnas requeridas: CENTRO DE COSTOS, PLACA, UUNN, CONTRATO.
+    Se actualiza en caché cada 5 minutos.
+    """
+    credenciales = Credentials.from_service_account_info(
+        dict(st.secrets["gcp_service_account"]),
+        scopes=SCOPES
+    )
+    cliente_padron = gspread.authorize(credenciales)
+    archivo_padron = cliente_padron.open_by_key(PADRON_VEHICULOS_ID)
+    pestana = archivo_padron.get_worksheet(0)
+
+    registros = pestana.get_all_records()
+
+    requeridas = {
+        "CENTRODECOSTOS": "CENTRO DE COSTOS",
+        "PLACA": "PLACA",
+        "UUNN": "UUNN",
+        "CONTRATO": "CONTRATO"
+    }
+
+    salida = []
+    for registro in registros:
+        normalizados = {
+            normalizar_clave(k): str(v).strip()
+            for k, v in registro.items()
+        }
+
+        faltantes = [
+            nombre for clave, nombre in requeridas.items()
+            if not normalizados.get(clave)
+        ]
+
+        # Ignorar filas completamente vacías; reportar filas parciales después.
+        if all(not str(v).strip() for v in registro.values()):
+            continue
+
+        if faltantes:
+            continue
+
+        salida.append({
+            "CENTRO DE COSTOS": normalizados["CENTRODECOSTOS"],
+            "PLACA": normalizados["PLACA"].upper(),
+            "UUNN": normalizados["UUNN"].upper(),
+            "CONTRATO": normalizados["CONTRATO"]
+        })
+
+    if not salida:
+        raise ValueError(
+            "No se encontraron vehículos. Verifica que la primera pestaña "
+            "tenga las columnas CENTRO DE COSTOS, PLACA, UUNN y CONTRATO."
+        )
+
+    return salida
+
+
+def normalizar_clave(valor):
+    valor = str(valor).strip().upper()
+    valor = unicodedata.normalize("NFD", valor)
+    valor = "".join(
+        caracter for caracter in valor
+        if unicodedata.category(caracter) != "Mn"
+    )
+    return re.sub(r"[^A-Z0-9]", "", valor)
 
 
 # =====================================================
@@ -680,149 +754,188 @@ elif modulo == "🚗 Vehículos":
     st.subheader("🚗 Registro de incidencias de vehículos")
 
     st.info(
-        "Registra fallas mecánicas, accidentes, "
-        "mantenimientos y reposiciones."
+        "El contrato, la UUNN y la placa se seleccionan desde el padrón maestro "
+        "de vehículos. Los datos se actualizan automáticamente desde Google Sheets."
     )
 
-    with st.form("form_vehiculo", clear_on_submit=True):
+    try:
+        padron = cargar_padron_vehiculos()
 
-        col1, col2 = st.columns(2)
+        # Selectores fuera del formulario para que cada selección
+        # actualice las opciones dependientes inmediatamente.
+        contratos_disponibles = sorted({
+            fila["CONTRATO"] for fila in padron if fila["CONTRATO"]
+        })
 
-        with col1:
+        if not contratos_disponibles:
+            st.warning("El padrón no contiene contratos disponibles.")
+            st.stop()
 
-            contrato = st.text_input(
-                "Contrato *"
+        contrato = st.selectbox(
+            "Contrato *",
+            contratos_disponibles,
+            key="vehiculo_contrato"
+        )
+
+        registros_contrato = [
+            fila for fila in padron
+            if fila["CONTRATO"] == contrato
+        ]
+
+        uunn_disponibles = sorted({
+            fila["UUNN"] for fila in registros_contrato if fila["UUNN"]
+        })
+
+        uunn = st.selectbox(
+            "UUNN *",
+            uunn_disponibles,
+            key="vehiculo_uunn"
+        )
+
+        registros_unidad = [
+            fila for fila in registros_contrato
+            if fila["UUNN"] == uunn
+        ]
+
+        placas_disponibles = sorted({
+            fila["PLACA"] for fila in registros_unidad if fila["PLACA"]
+        })
+
+        placa = st.selectbox(
+            "Placa del vehículo *",
+            placas_disponibles,
+            key="vehiculo_placa"
+        )
+
+        fila_vehiculo = next(
+            (
+                fila for fila in registros_unidad
+                if fila["PLACA"] == placa
+            ),
+            {}
+        )
+
+        if fila_vehiculo.get("CENTRO DE COSTOS"):
+            st.caption(
+                f"Centro de costos asociado: {fila_vehiculo['CENTRO DE COSTOS']}"
             )
 
-            uunn = st.selectbox(
-                "UUNN *",
-                [
-                    "HUANCAYO",
-                    "PASCO",
-                    "TARMA",
-                    "LA MERCED",
-                    "SATIPO",
-                    "OTRO"
-                ]
-            )
+        with st.form("form_vehiculo", clear_on_submit=True):
 
-            placa = st.text_input(
-                "Placa del vehículo *",
-                placeholder="ABC-123"
-            ).upper()
+            col1, col2 = st.columns(2)
 
-            tipo_incidencia = st.selectbox(
-                "Tipo de incidencia *",
-                [
-                    "FALLA MECANICA",
-                    "ACCIDENTE",
-                    "MANTENIMIENTO PREVENTIVO",
-                    "MANTENIMIENTO CORRECTIVO",
-                    "DOCUMENTACION",
-                    "OTRO"
-                ]
-            )
+            with col1:
 
-        with col2:
+                tipo_incidencia = st.selectbox(
+                    "Tipo de incidencia *",
+                    [
+                        "FALLA MECANICA",
+                        "ACCIDENTE",
+                        "MANTENIMIENTO PREVENTIVO",
+                        "MANTENIMIENTO CORRECTIVO",
+                        "DOCUMENTACION",
+                        "OTRO"
+                    ]
+                )
 
-            fecha_reporte = st.date_input(
-                "Fecha de reporte *",
-                format="DD/MM/YYYY"
-            )
+            with col2:
+
+                fecha_reporte = st.date_input(
+                    "Fecha de reporte *",
+                    format="DD/MM/YYYY"
+                )
+
+                tiene_reposicion = st.checkbox(
+                    "Registrar fecha de reposición"
+                )
+
+                fecha_reposicion = None
+
+                if tiene_reposicion:
+                    fecha_reposicion = st.date_input(
+                        "Fecha de reposición",
+                        format="DD/MM/YYYY"
+                    )
+
+                estado = st.selectbox(
+                    "Estado *",
+                    [
+                        "PENDIENTE",
+                        "REPUESTO"
+                    ]
+                )
 
             descripcion = st.text_area(
                 "Descripción de la incidencia *",
                 placeholder="Describa la falla o incidencia..."
             )
 
-            tiene_reposicion = st.checkbox(
-                "Registrar fecha de reposición"
+            observaciones = st.text_area(
+                "Observaciones",
+                placeholder="Ej. Se asignó otra camioneta..."
             )
 
-            fecha_reposicion = None
-
-            if tiene_reposicion:
-
-                fecha_reposicion = st.date_input(
-                    "Fecha de reposición",
-                    format="DD/MM/YYYY"
-                )
-
-            estado = st.selectbox(
-                "Estado *",
-                [
-                    "PENDIENTE",
-                    "REPUESTO"
-                ]
+            guardar = st.form_submit_button(
+                "💾 GUARDAR REGISTRO",
+                use_container_width=True
             )
 
-        observaciones = st.text_area(
-            "Observaciones",
-            placeholder="Ej. Se asignó otra camioneta..."
+            if guardar:
+
+                if not descripcion.strip():
+                    st.warning("Completa la descripción de la incidencia.")
+
+                elif (
+                    fecha_reposicion is not None
+                    and fecha_reposicion < fecha_reporte
+                ):
+                    st.warning(
+                        "La fecha de reposición no puede "
+                        "ser anterior a la fecha de reporte."
+                    )
+
+                elif (
+                    estado == "REPUESTO"
+                    and fecha_reposicion is None
+                ):
+                    st.warning(
+                        "Registra la fecha de reposición "
+                        "cuando el estado sea REPUESTO."
+                    )
+
+                elif conexion_ok:
+
+                    datos = {
+                        "CONTRATO": contrato,
+                        "UUNN": uunn,
+                        "PLACA": placa,
+                        "TIPO_INCIDENCIA": tipo_incidencia,
+                        "DESCRIPCION": descripcion.strip(),
+                        "FECHA_REPORTE": fecha_texto(fecha_reporte),
+                        "FECHA_REPOSICION": fecha_texto(fecha_reposicion),
+                        "ESTADO": estado,
+                        "OBSERVACIONES": observaciones.strip()
+                    }
+
+                    ok, mensaje = guardar_registro(
+                        "Vehiculo",
+                        HEADERS_VEHICULO,
+                        datos
+                    )
+
+                    if ok:
+                        st.success("✅ " + mensaje)
+                        st.balloons()
+                    else:
+                        st.error(mensaje)
+
+    except Exception as e:
+        st.error(
+            "No se pudo cargar el padrón de vehículos. "
+            "Verifica que el archivo esté compartido con la cuenta de servicio "
+            "configurada en Streamlit Secrets."
         )
-
-        guardar = st.form_submit_button(
-            "💾 GUARDAR REGISTRO",
-            use_container_width=True
-        )
-
-        if guardar:
-
-            if not all([
-                contrato.strip(),
-                placa.strip(),
-                descripcion.strip()
-            ]):
-
-                st.warning(
-                    "Completa los campos obligatorios."
-                )
-
-            elif (
-                fecha_reposicion is not None
-                and fecha_reposicion < fecha_reporte
-            ):
-
-                st.warning(
-                    "La fecha de reposición no puede "
-                    "ser anterior a la fecha de reporte."
-                )
-
-            elif (
-                estado == "REPUESTO"
-                and fecha_reposicion is None
-            ):
-
-                st.warning(
-                    "Registra la fecha de reposición "
-                    "cuando el estado sea REPUESTO."
-                )
-
-            elif conexion_ok:
-
-                datos = {
-                    "CONTRATO": contrato.strip(),
-                    "UUNN": uunn,
-                    "PLACA": placa.strip(),
-                    "TIPO_INCIDENCIA": tipo_incidencia,
-                    "DESCRIPCION": descripcion.strip(),
-                    "FECHA_REPORTE": fecha_texto(fecha_reporte),
-                    "FECHA_REPOSICION": fecha_texto(fecha_reposicion),
-                    "ESTADO": estado,
-                    "OBSERVACIONES": observaciones.strip()
-                }
-
-                ok, mensaje = guardar_registro(
-                    "Vehiculo",
-                    HEADERS_VEHICULO,
-                    datos
-                )
-
-                if ok:
-                    st.success("✅ " + mensaje)
-                    st.balloons()
-                else:
-                    st.error(mensaje)
+        st.caption(f"Detalle técnico: {e}")
 
 
 # =====================================================
