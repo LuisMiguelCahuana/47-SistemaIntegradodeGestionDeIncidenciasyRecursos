@@ -761,8 +761,6 @@ elif modulo == "🚗 Vehículos":
     try:
         padron = cargar_padron_vehiculos()
 
-        # Selectores fuera del formulario para que cada selección
-        # actualice las opciones dependientes inmediatamente.
         contratos_disponibles = sorted({
             fila["CONTRATO"] for fila in padron if fila["CONTRATO"]
         })
@@ -771,11 +769,15 @@ elif modulo == "🚗 Vehículos":
             st.warning("El padrón no contiene contratos disponibles.")
             st.stop()
 
-        contrato = st.selectbox(
-            "Contrato *",
-            contratos_disponibles,
-            key="vehiculo_contrato"
-        )
+        # Filtros dependientes en una sola fila
+        col_contrato, col_uunn, col_placa = st.columns(3)
+
+        with col_contrato:
+            contrato = st.selectbox(
+                "Contrato *",
+                contratos_disponibles,
+                key="vehiculo_contrato"
+            )
 
         registros_contrato = [
             fila for fila in padron
@@ -786,11 +788,12 @@ elif modulo == "🚗 Vehículos":
             fila["UUNN"] for fila in registros_contrato if fila["UUNN"]
         })
 
-        uunn = st.selectbox(
-            "UUNN *",
-            uunn_disponibles,
-            key="vehiculo_uunn"
-        )
+        with col_uunn:
+            uunn = st.selectbox(
+                "UUNN *",
+                uunn_disponibles,
+                key="vehiculo_uunn"
+            )
 
         registros_unidad = [
             fila for fila in registros_contrato
@@ -801,11 +804,12 @@ elif modulo == "🚗 Vehículos":
             fila["PLACA"] for fila in registros_unidad if fila["PLACA"]
         })
 
-        placa = st.selectbox(
-            "Placa del vehículo *",
-            placas_disponibles,
-            key="vehiculo_placa"
-        )
+        with col_placa:
+            placa = st.selectbox(
+                "Placa del vehículo *",
+                placas_disponibles,
+                key="vehiculo_placa"
+            )
 
         fila_vehiculo = next(
             (
@@ -822,10 +826,10 @@ elif modulo == "🚗 Vehículos":
 
         with st.form("form_vehiculo", clear_on_submit=True):
 
-            col1, col2 = st.columns(2)
+            # Tipo de incidencia y fecha de reporte en una fila
+            col_tipo, col_fecha = st.columns(2)
 
-            with col1:
-
+            with col_tipo:
                 tipo_incidencia = st.selectbox(
                     "Tipo de incidencia *",
                     [
@@ -838,25 +842,23 @@ elif modulo == "🚗 Vehículos":
                     ]
                 )
 
-            with col2:
-
+            with col_fecha:
                 fecha_reporte = st.date_input(
                     "Fecha de reporte *",
                     format="DD/MM/YYYY"
                 )
 
-                tiene_reposicion = st.checkbox(
-                    "Registrar fecha de reposición"
+            # Descripción y estado en una misma fila
+            col_descripcion, col_estado = st.columns([2, 1])
+
+            with col_descripcion:
+                descripcion = st.text_area(
+                    "Descripción de la incidencia *",
+                    placeholder="Describa la falla o incidencia...",
+                    height=120
                 )
 
-                fecha_reposicion = None
-
-                if tiene_reposicion:
-                    fecha_reposicion = st.date_input(
-                        "Fecha de reposición",
-                        format="DD/MM/YYYY"
-                    )
-
+            with col_estado:
                 estado = st.selectbox(
                     "Estado *",
                     [
@@ -864,11 +866,6 @@ elif modulo == "🚗 Vehículos":
                         "REPUESTO"
                     ]
                 )
-
-            descripcion = st.text_area(
-                "Descripción de la incidencia *",
-                placeholder="Describa la falla o incidencia..."
-            )
 
             observaciones = st.text_area(
                 "Observaciones",
@@ -885,24 +882,6 @@ elif modulo == "🚗 Vehículos":
                 if not descripcion.strip():
                     st.warning("Completa la descripción de la incidencia.")
 
-                elif (
-                    fecha_reposicion is not None
-                    and fecha_reposicion < fecha_reporte
-                ):
-                    st.warning(
-                        "La fecha de reposición no puede "
-                        "ser anterior a la fecha de reporte."
-                    )
-
-                elif (
-                    estado == "REPUESTO"
-                    and fecha_reposicion is None
-                ):
-                    st.warning(
-                        "Registra la fecha de reposición "
-                        "cuando el estado sea REPUESTO."
-                    )
-
                 elif conexion_ok:
 
                     datos = {
@@ -912,7 +891,7 @@ elif modulo == "🚗 Vehículos":
                         "TIPO_INCIDENCIA": tipo_incidencia,
                         "DESCRIPCION": descripcion.strip(),
                         "FECHA_REPORTE": fecha_texto(fecha_reporte),
-                        "FECHA_REPOSICION": fecha_texto(fecha_reposicion),
+                        "FECHA_REPOSICION": "",
                         "ESTADO": estado,
                         "OBSERVACIONES": observaciones.strip()
                     }
