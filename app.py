@@ -20,6 +20,10 @@ st.set_page_config(
 SPREADSHEET_ID = "1AJ94Nrvlg7T4994K3qD_gD7dv6JZ563hJSf8hvPhOTA"
 PADRON_VEHICULOS_ID = "1osj3Usp1MhN0U97r7E4W2tYXNa9kmmNDtQRE6MkAQ_U"
 
+# Archivo de Google Sheets que administra los usuarios de SIGIR.
+SPREADSHEET_USUARIOS_ID = "1CnZME_yWF5rLyjOOUoh8izIk8GE3tLPoMRj8Uzgu-38"
+HOJA_USUARIOS = None  # None = primera pestaña
+
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive"
@@ -174,6 +178,9 @@ def normalizar(texto):
 
 def guardar_registro(nombre_hoja, encabezados, datos):
 
+    if not verificar_permiso("REGISTRAR"):
+        return False, "No tienes permiso para registrar incidencias."
+
     try:
 
         hoja = spreadsheet.worksheet(nombre_hoja)
@@ -258,6 +265,163 @@ def fecha_texto(fecha):
 
     return fecha.strftime("%d/%m/%Y")
 
+
+# =====================================================
+# LOGIN Y CONTROL DE PERMISOS
+# =====================================================
+
+PERMISOS_VALIDOS = {"CREAR", "EDITAR", "REGISTRAR", "ACTUALIZAR", "TODOS"}
+
+
+@st.cache_data(ttl=60)
+def obtener_usuarios():
+    """Lee las cuentas habilitadas desde Google Sheets."""
+    credenciales = Credentials.from_service_account_info(
+        dict(st.secrets["gcp_service_account"]),
+        scopes=SCOPES
+    )
+    cliente = gspread.authorize(credenciales)
+    archivo = cliente.open_by_key(SPREADSHEET_USUARIOS_ID)
+
+    hoja = (
+        archivo.worksheet(HOJA_USUARIOS)
+        if HOJA_USUARIOS
+        else archivo.sheet1
+    )
+
+    registros = hoja.get_all_records()
+    usuarios = {}
+
+    for registro in registros:
+        usuario = str(registro.get("USUARIO", "")).strip()
+        if not usuario:
+            continue
+
+        clave = usuario.casefold()
+        usuarios[clave] = {
+            "USUARIO": usuario,
+            "CONTRASEÑA": str(registro.get("CONTRASEÑA", "")).strip(),
+            "NOMBRE": str(registro.get("NOMBRE", "")).strip(),
+            "PERMISOS": str(registro.get("PERMISOS", "")).strip().upper(),
+            "ACTIVO": str(registro.get("ACTIVO", "")).strip().upper()
+        }
+
+    return usuarios
+
+
+def permisos_de_usuario(texto):
+    permisos = {
+        p.strip().upper()
+        for p in str(texto).replace(";", ",").split(",")
+        if p.strip()
+    }
+
+    if "TODOS" in permisos:
+        return {"REGISTRAR", "ACTUALIZAR"}
+
+    # Compatibilidad con la aplicación de referencia:
+    # CREAR equivale a registrar y EDITAR equivale a actualizar.
+    resultado = set()
+    if "CREAR" in permisos or "REGISTRAR" in permisos:
+        resultado.add("REGISTRAR")
+    if "EDITAR" in permisos or "ACTUALIZAR" in permisos:
+        resultado.add("ACTUALIZAR")
+
+    return resultado
+
+
+def verificar_permiso(permiso):
+    if not st.session_state.get("autenticado", False):
+        return False
+
+    permisos = st.session_state.get("permisos_usuario", set())
+    return permiso.upper() in permisos
+
+
+def cerrar_sesion():
+    for clave in (
+        "autenticado",
+        "usuario",
+        "nombre_usuario",
+        "permisos_usuario"
+    ):
+        st.session_state.pop(clave, None)
+
+
+def mostrar_inicio_sesion():
+    st.markdown(
+        """
+        <div style="max-width:620px;margin:7vh auto 20px auto;text-align:center;">
+            <div style="font-size:48px;">📋</div>
+            <h1 style="color:#163A5F;margin-bottom:4px;">SIGIR</h1>
+            <div style="font-size:14px;color:#64748b;">
+                SISTEMA INTEGRADO DE GESTIÓN DE INCIDENCIAS Y RECURSOS
+            </div>
+            <p style="margin-top:22px;">Inicia sesión para continuar</p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    espacio_izq, centro, espacio_der = st.columns([1, 1.2, 1])
+    with centro:
+        with st.form("form_login_sigir"):
+            usuario_ingresado = st.text_input("Usuario").strip()
+            contrasena_ingresada = st.text_input(
+                "Contraseña",
+                type="password"
+            )
+            ingresar = st.form_submit_button(
+                "🔐 INICIAR SESIÓN",
+                use_container_width=True,
+                type="primary"
+            )
+
+        if ingresar:
+            if not usuario_ingresado or not contrasena_ingresada:
+                st.warning("Ingresa tu usuario y contraseña.")
+                return
+
+            try:
+                usuarios = obtener_usuarios()
+                datos = usuarios.get(usuario_ingresado.casefold())
+
+                if not datos:
+                    st.error("Usuario o contraseña incorrectos.")
+                    return
+
+                if datos["ACTIVO"] not in (
+                    "SI", "SÍ", "ACTIVO", "TRUE", "1"
+                ):
+                    st.error("Este usuario se encuentra inactivo.")
+                    return
+
+                if datos["CONTRASEÑA"] != contrasena_ingresada:
+                    st.error("Usuario o contraseña incorrectos.")
+                    return
+
+                permisos = permisos_de_usuario(datos["PERMISOS"])
+                if not permisos:
+                    st.error(
+                        "El usuario no tiene permisos asignados. "
+                        "Solicita al administrador que revise la hoja de usuarios."
+                    )
+                    return
+
+                st.session_state["autenticado"] = True
+                st.session_state["usuario"] = datos["USUARIO"]
+                st.session_state["nombre_usuario"] = (
+                    datos["NOMBRE"] or datos["USUARIO"]
+                )
+                st.session_state["permisos_usuario"] = permisos
+                st.rerun()
+
+            except Exception as error:
+                st.error(
+                    "No se pudo validar el acceso. Verifica que la cuenta "
+                    "de servicio tenga permiso de lectura sobre la hoja de usuarios."
+                )
+                st.caption(f"Detalle técnico: {error}")
 
 
 # =====================================================
@@ -446,7 +610,9 @@ def interfaz_actualizar_registros():
             )
 
             if confirmar:
-                if nuevo_estado == "REPUESTO" and not registrar_fecha:
+                if not verificar_permiso("ACTUALIZAR"):
+                    st.error("No tienes permiso para actualizar incidencias.")
+                elif nuevo_estado == "REPUESTO" and not registrar_fecha:
                     st.warning(
                         "Marca la casilla para guardar la fecha real antes de "
                         "cambiar el estado a REPUESTO."
@@ -545,7 +711,16 @@ HEADERS_MATERIAL = [
 
 
 # =====================================================
-# CABECERA DE LA APLICACIÓN
+# CONTROL DE ACCESO: LOGIN OBLIGATORIO
+# =====================================================
+
+if not st.session_state.get("autenticado", False):
+    mostrar_inicio_sesion()
+    st.stop()
+
+
+# =====================================================
+# CABECERA Y SESIÓN ACTIVA
 # =====================================================
 
 st.markdown(
@@ -560,20 +735,47 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-st.divider()
+st.sidebar.markdown("### 👤 Sesión activa")
+st.sidebar.write(st.session_state.get("nombre_usuario", ""))
+st.sidebar.caption(
+    f"Usuario: {st.session_state.get('usuario', '')}"
+)
+st.sidebar.caption(
+    "Permisos: " + ", ".join(
+        sorted(st.session_state.get("permisos_usuario", set()))
+    )
+)
+
+if st.sidebar.button("🚪 CERRAR SESIÓN", use_container_width=True):
+    cerrar_sesion()
+    st.rerun()
+
+st.sidebar.divider()
+
 
 # =====================================================
-# MENÚ DE NAVEGACIÓN
+# MENÚ SEGÚN PERMISOS DEL USUARIO
 # =====================================================
+
+opciones_menu = []
+
+if verificar_permiso("REGISTRAR"):
+    opciones_menu.extend([
+        "👤 Personal",
+        "🚗 Vehículos",
+        "📦 Materiales"
+    ])
+
+if verificar_permiso("ACTUALIZAR"):
+    opciones_menu.append("📝 Actualizar registros")
+
+if not opciones_menu:
+    st.error("Tu cuenta no tiene permisos para acceder a los módulos de SIGIR.")
+    st.stop()
 
 modulo = st.sidebar.radio(
     "SELECCIONAR FORMULARIO",
-    [
-        "👤 Personal",
-        "🚗 Vehículos",
-        "📦 Materiales",
-        "📝 Actualizar registros"
-    ]
+    opciones_menu
 )
 
 st.sidebar.divider()
@@ -581,6 +783,7 @@ st.sidebar.divider()
 st.sidebar.markdown("### SIGIR")
 st.sidebar.caption("Registro de incidencias y disponibilidad de recursos.")
 st.sidebar.caption("Versión 1.0")
+
 
 # =====================================================
 # ACTUALIZAR REGISTROS EXISTENTES
