@@ -293,6 +293,11 @@ def actualizar_celda(hoja, encabezados, fila, columna, valor):
 
 def interfaz_actualizar_registros():
     st.subheader("📝 Actualizar incidencias reportadas")
+
+    # Mensaje persistente: se muestra después de refrescar la lista de pendientes.
+    if st.session_state.get("mensaje_actualizacion_sigir"):
+        st.success(st.session_state.pop("mensaje_actualizacion_sigir"))
+
     st.info(
         "Selecciona una incidencia pendiente para registrar su incorporación, "
         "reposición o reparación. Esta opción modifica la fila existente; "
@@ -401,28 +406,26 @@ def interfaz_actualizar_registros():
                 "reparación o reposición, aunque estés actualizando el sistema días después."
             )
 
-            registrar_fecha = st.checkbox(
-                f"Guardar {cfg['fecha_label'].lower()}",
-                value=bool(fecha_guardada)
-            )
+            # Fecha y estado en una sola fila.
+            col_fecha, col_estado = st.columns([2, 1])
 
-            # El selector se muestra siempre para que el coordinador
-            # pueda elegir una fecha pasada aunque registre tarde.
-            nueva_fecha = st.date_input(
-                f"{cfg['fecha_label']} (selecciona la fecha real)",
-                value=fecha_actual or datetime.now().date(),
-                format="DD/MM/YYYY",
-                help=(
-                    "Puedes seleccionar cualquier fecha, incluso anterior a hoy. "
-                    "La fecha se guarda si marcas la casilla de arriba."
+            with col_fecha:
+                nueva_fecha = st.date_input(
+                    f"{cfg['fecha_label']} (selecciona la fecha real)",
+                    value=fecha_actual or datetime.now().date(),
+                    format="DD/MM/YYYY",
+                    help=(
+                        "Selecciona la fecha efectiva del evento. "
+                        "Puedes elegir una fecha pasada si la actualización se registra después."
+                    )
                 )
-            )
 
-            nuevo_estado = st.selectbox(
-                "Estado",
-                ["PENDIENTE", "REPUESTO"],
-                index=1 if estado_actual == "REPUESTO" else 0
-            )
+            with col_estado:
+                nuevo_estado = st.selectbox(
+                    "Estado",
+                    ["PENDIENTE", "REPUESTO"],
+                    index=1 if estado_actual == "REPUESTO" else 0
+                )
 
             nuevas_observaciones = st.text_area(
                 "Observaciones / acciones realizadas",
@@ -443,7 +446,7 @@ def interfaz_actualizar_registros():
                     )
                 else:
                     try:
-                        if registrar_fecha and nueva_fecha:
+                        if nuevo_estado == "REPUESTO":
                             actualizar_celda(
                                 hoja, encabezados, numero_fila,
                                 cfg["fecha"], fecha_texto(nueva_fecha)
@@ -478,8 +481,9 @@ def interfaz_actualizar_registros():
                             "OBSERVACIONES", nuevas_observaciones.strip()
                         )
 
-                        st.success(
-                            f"Registro de la fila {numero_fila} actualizado correctamente."
+                        st.session_state["mensaje_actualizacion_sigir"] = (
+                            "¡Actualización realizada correctamente! "
+                            "La fecha real, el estado y las observaciones se guardaron en Google Sheets."
                         )
                         st.rerun()
 
