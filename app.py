@@ -406,7 +406,13 @@ def interfaz_actualizar_registros():
                 "reparación o reposición, aunque estés actualizando el sistema días después."
             )
 
-            # Fecha y estado en una sola fila.
+            # Se conserva la casilla para decidir si se guarda la fecha.
+            # El calendario permanece visible y la fecha/estado comparten una fila.
+            registrar_fecha = st.checkbox(
+                f"Registrar {cfg['fecha_label'].lower()}",
+                value=bool(fecha_guardada)
+            )
+
             col_fecha, col_estado = st.columns([2, 1])
 
             with col_fecha:
@@ -416,7 +422,8 @@ def interfaz_actualizar_registros():
                     format="DD/MM/YYYY",
                     help=(
                         "Selecciona la fecha efectiva del evento. "
-                        "Puedes elegir una fecha pasada si la actualización se registra después."
+                        "Puedes elegir una fecha pasada si la actualización se registra después. "
+                        "La fecha solo se guardará si marcas la casilla."
                     )
                 )
 
@@ -439,14 +446,14 @@ def interfaz_actualizar_registros():
             )
 
             if confirmar:
-                if nuevo_estado == "REPUESTO" and nueva_fecha is None:
+                if nuevo_estado == "REPUESTO" and not registrar_fecha:
                     st.warning(
-                        "Para marcar la incidencia como REPUESTO, "
-                        "debes registrar la fecha de incorporación o reposición."
+                        "Marca la casilla para guardar la fecha real antes de "
+                        "cambiar el estado a REPUESTO."
                     )
                 else:
                     try:
-                        if nuevo_estado == "REPUESTO":
+                        if registrar_fecha:
                             actualizar_celda(
                                 hoja, encabezados, numero_fila,
                                 cfg["fecha"], fecha_texto(nueva_fecha)
