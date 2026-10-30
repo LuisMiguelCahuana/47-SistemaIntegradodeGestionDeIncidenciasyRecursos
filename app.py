@@ -349,30 +349,123 @@ def cerrar_sesion():
 
 
 def mostrar_inicio_sesion():
+    """Pantalla de acceso moderna, centrada horizontal y verticalmente."""
+
     st.markdown(
         """
-        <div style="max-width:620px;margin:7vh auto 20px auto;text-align:center;">
-            <div style="font-size:48px;">📋</div>
-            <h1 style="color:#163A5F;margin-bottom:4px;">SIGIR</h1>
-            <div style="font-size:14px;color:#64748b;">
-                SISTEMA INTEGRADO DE GESTIÓN DE INCIDENCIAS Y RECURSOS
+        <style>
+        /* Centrado de la pantalla de acceso */
+        [data-testid="stAppViewContainer"] .main .block-container {
+            padding-top: 0.8rem;
+            padding-bottom: 1rem;
+            max-width: 1180px;
+        }
+        .login-wrap {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: max(28px, calc((82vh - 420px) / 2)) 12px 12px 12px;
+        }
+        .login-card {
+            width: 100%;
+            max-width: 460px;
+            padding: 34px 34px 26px 34px;
+            border: 1px solid rgba(148,163,184,.22);
+            border-radius: 22px;
+            background: linear-gradient(145deg, #171f2d 0%, #101722 100%);
+            box-shadow: 0 22px 65px rgba(0,0,0,.38);
+            text-align: center;
+        }
+        .login-logo {
+            width: 68px;
+            height: 68px;
+            margin: 0 auto 14px auto;
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 34px;
+            background: linear-gradient(135deg, #2563eb, #0ea5e9);
+            box-shadow: 0 10px 28px rgba(14,165,233,.25);
+        }
+        .login-title {
+            margin: 0;
+            color: #f8fafc;
+            font-size: 31px;
+            font-weight: 800;
+            letter-spacing: 1.2px;
+        }
+        .login-subtitle {
+            color: #9caec2;
+            font-size: 12px;
+            line-height: 1.6;
+            letter-spacing: .7px;
+            margin: 7px 0 8px 0;
+        }
+        .login-welcome {
+            color: #e2e8f0;
+            font-size: 15px;
+            margin: 18px 0 4px 0;
+        }
+        .login-hint {
+            color: #94a3b8;
+            font-size: 12px;
+            margin: 0 0 16px 0;
+        }
+        div[data-testid="stForm"] {
+            border: 1px solid rgba(148,163,184,.2);
+            border-radius: 16px;
+            padding: 22px;
+            background: rgba(15,23,42,.55);
+        }
+        div[data-testid="stForm"] input {
+            border-radius: 10px;
+        }
+        div[data-testid="stForm"] button[kind="primaryFormSubmit"],
+        div[data-testid="stForm"] button {
+            min-height: 46px;
+            border-radius: 10px;
+            font-weight: 700;
+        }
+        @media (max-width: 640px) {
+            .login-wrap { padding: 24px 8px 8px 8px; }
+            .login-card { padding: 25px 16px 20px 16px; }
+            .login-title { font-size: 26px; }
+        }
+        </style>
+        <div class="login-wrap">
+            <div class="login-card">
+                <div class="login-logo">📋</div>
+                <h1 class="login-title">SIGIR</h1>
+                <div class="login-subtitle">
+                    SISTEMA INTEGRADO DE GESTIÓN<br>
+                    DE INCIDENCIAS Y RECURSOS
+                </div>
+                <div class="login-welcome">Bienvenido</div>
+                <div class="login-hint">
+                    Ingresa tus credenciales para acceder al sistema
+                </div>
             </div>
-            <p style="margin-top:22px;">Inicia sesión para continuar</p>
         </div>
         """,
         unsafe_allow_html=True
     )
 
-    espacio_izq, centro, espacio_der = st.columns([1, 1.2, 1])
+    # Formulario centrado debajo del encabezado visual.
+    izquierda, centro, derecha = st.columns([1, 1.05, 1])
     with centro:
         with st.form("form_login_sigir"):
-            usuario_ingresado = st.text_input("Usuario").strip()
+            usuario_ingresado = st.text_input(
+                "Usuario",
+                placeholder="Escribe tu usuario"
+            ).strip()
             contrasena_ingresada = st.text_input(
                 "Contraseña",
-                type="password"
+                type="password",
+                placeholder="Escribe tu contraseña"
             )
             ingresar = st.form_submit_button(
-                "🔐 INICIAR SESIÓN",
+                "🔐  INICIAR SESIÓN",
                 use_container_width=True,
                 type="primary"
             )
@@ -807,7 +900,17 @@ elif modulo == "👤 Personal":
         "descansos médicos y otras incidencias."
     )
 
-    with st.form("form_personal", clear_on_submit=True):
+    # El formulario conserva los datos cuando hay errores de validación.
+    # Solo se limpia después de guardar correctamente.
+    if "personal_form_version" not in st.session_state:
+        st.session_state["personal_form_version"] = 0
+
+    personal_form_version = st.session_state["personal_form_version"]
+
+    with st.form(
+        f"form_personal_{personal_form_version}",
+        clear_on_submit=False
+    ):
 
         col1, col2 = st.columns(2)
 
@@ -815,12 +918,14 @@ elif modulo == "👤 Personal":
 
             contrato = st.text_input(
                 "Contrato *",
-                placeholder="Ej. GR-022-2023/ELECTO"
+                placeholder="Ej. GR-022-2023/ELECTO",
+                key=f"personal_contrato_{personal_form_version}"
             )
 
             denominacion = st.text_input(
                 "Denominación *",
-                placeholder="Ej. EBAR"
+                placeholder="Ej. EBAR",
+                key=f"personal_denominacion_{personal_form_version}"
             )
 
             uunn = st.selectbox(
@@ -832,22 +937,26 @@ elif modulo == "👤 Personal":
                     "LA MERCED",
                     "SATIPO",
                     "OTRO"
-                ]
+                ],
+                key=f"personal_uunn_{personal_form_version}"
             )
 
             personal = st.text_input(
-                "Nombre del personal *"
+                "Nombre del personal *",
+                key=f"personal_nombre_{personal_form_version}"
             )
 
             dni = st.text_input(
                 "DNI",
-                max_chars=8
+                max_chars=8,
+                key=f"personal_dni_{personal_form_version}"
             )
 
         with col2:
 
             cargo = st.text_input(
-                "Cargo *"
+                "Cargo *",
+                key=f"personal_cargo_{personal_form_version}"
             )
 
             tipo_incidencia = st.selectbox(
@@ -861,12 +970,14 @@ elif modulo == "👤 Personal":
                     "PERMISO",
                     "FALTA",
                     "OTRO"
-                ]
+                ],
+                key=f"personal_tipo_incidencia_{personal_form_version}"
             )
 
             fecha_salida = st.date_input(
                 "Fecha de salida *",
-                format="DD/MM/YYYY"
+                format="DD/MM/YYYY",
+                key=f"personal_fecha_salida_{personal_form_version}"
             )
 
             # La fecha de incorporación se registra posteriormente
@@ -878,12 +989,14 @@ elif modulo == "👤 Personal":
                 [
                     "PENDIENTE",
                     "REPUESTO"
-                ]
+                ],
+                key=f"personal_estado_{personal_form_version}"
             )
 
         observaciones = st.text_area(
             "Observaciones",
-            placeholder="Ingrese detalles adicionales..."
+            placeholder="Ingrese detalles adicionales...",
+            key=f"personal_observaciones_{personal_form_version}"
         )
 
         guardar = st.form_submit_button(
@@ -951,10 +1064,18 @@ elif modulo == "👤 Personal":
                 )
 
                 if ok:
-                    st.success("✅ " + mensaje)
-                    st.balloons()
+                    st.session_state["mensaje_personal_guardado"] = (
+                        "✅ " + mensaje
+                    )
+                    st.session_state["personal_form_version"] += 1
+                    st.rerun()
                 else:
+                    # No se modifica la versión del formulario:
+                    # todos los datos ingresados permanecen visibles.
                     st.error(mensaje)
+
+    if st.session_state.get("mensaje_personal_guardado"):
+        st.success(st.session_state.pop("mensaje_personal_guardado"))
 
 
 # =====================================================
