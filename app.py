@@ -655,18 +655,9 @@ elif modulo == "👤 Personal":
                 format="DD/MM/YYYY"
             )
 
-            tiene_incorporacion = st.checkbox(
-                "Registrar fecha de incorporación del nuevo personal"
-            )
-
+            # La fecha de incorporación se registra posteriormente
+            # desde el módulo "Actualizar registros".
             fecha_incorporacion = None
-
-            if tiene_incorporacion:
-
-                fecha_incorporacion = st.date_input(
-                    "Fecha de incorporación",
-                    format="DD/MM/YYYY"
-                )
 
             estado = st.selectbox(
                 "Estado *",
@@ -713,6 +704,13 @@ elif modulo == "👤 Personal":
                 st.warning(
                     "La fecha de incorporación no puede "
                     "ser anterior a la fecha de salida."
+                )
+
+            elif estado == "REPUESTO":
+                st.warning(
+                    "Registra inicialmente la incidencia como PENDIENTE. "
+                    "Cuando se incorpore el reemplazo, utiliza 'Actualizar registros' "
+                    "para colocar la fecha real y cambiar el estado a REPUESTO."
                 )
 
             elif conexion_ok:
@@ -984,18 +982,9 @@ elif modulo == "📦 Materiales":
                 format="DD/MM/YYYY"
             )
 
-            tiene_reposicion = st.checkbox(
-                "Registrar fecha de reposición"
-            )
-
+            # La fecha de reposición se registra posteriormente
+            # desde el módulo "Actualizar registros".
             fecha_reposicion = None
-
-            if tiene_reposicion:
-
-                fecha_reposicion = st.date_input(
-                    "Fecha de reposición",
-                    format="DD/MM/YYYY"
-                )
 
             estado = st.selectbox(
                 "Estado *",
@@ -1026,24 +1015,11 @@ elif modulo == "📦 Materiales":
                     "Completa los campos obligatorios."
                 )
 
-            elif (
-                fecha_reposicion is not None
-                and fecha_reposicion < fecha_inicio
-            ):
-
+            elif estado == "REPUESTO":
                 st.warning(
-                    "La fecha de reposición no puede "
-                    "ser anterior a la fecha de inicio."
-                )
-
-            elif (
-                estado == "REPUESTO"
-                and fecha_reposicion is None
-            ):
-
-                st.warning(
-                    "Registra la fecha de reposición "
-                    "cuando el estado sea REPUESTO."
+                    "Registra inicialmente la incidencia como PENDIENTE. "
+                    "Cuando recibas el material, utiliza 'Actualizar registros' "
+                    "para colocar la fecha real y cambiar el estado a REPUESTO."
                 )
 
             elif conexion_ok:
