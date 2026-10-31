@@ -1719,58 +1719,78 @@ elif modulo == "📦 Materiales":
             )
 
         # FILA 2: Tipo, Material, Unidad de medida y Cantidad faltante
+        tipos_disponibles = sorted({
+            fila["TIPO_INSPECCION"] for fila in registros_contrato
+        })
+        opciones_tipo = ["Seleccione..."] + tipos_disponibles
+        if "Otro" not in opciones_tipo and "OTRO" not in opciones_tipo:
+            opciones_tipo.append("Otro")
+
         col_tipo, col_material, col_unidad, col_cantidad = st.columns(
             [1, 1.7, 0.8, 1]
         )
 
-        tipos_disponibles = sorted({
-            fila["TIPO_INSPECCION"] for fila in registros_contrato
-        })
-
         with col_tipo:
-            tipo = st.selectbox(
+            tipo_seleccionado = st.selectbox(
                 "Tipo *",
-                ["Seleccione..."] + tipos_disponibles,
+                opciones_tipo,
                 key="material_tipo",
                 disabled=(contrato == "Seleccione...")
             )
 
+        es_tipo_otro = tipo_seleccionado.strip().upper() == "OTRO"
+        tipo = "OTRO" if es_tipo_otro else tipo_seleccionado
+
         registros_tipo = (
             [
                 fila for fila in registros_contrato
-                if fila["TIPO_INSPECCION"] == tipo
+                if fila["TIPO_INSPECCION"] == tipo_seleccionado
             ]
-            if tipo != "Seleccione..." else []
+            if tipo_seleccionado != "Seleccione..." and not es_tipo_otro
+            else []
         )
 
-        descripciones_disponibles = sorted({
-            fila["DESCRIPCION"] for fila in registros_tipo
-        })
+        if es_tipo_otro:
+            with col_material:
+                material = st.text_input(
+                    "Material, equipo o herramienta *",
+                    placeholder="Escribe el material o herramienta...",
+                    key="material_descripcion_otro"
+                ).strip()
 
-        with col_material:
-            material = st.selectbox(
-                "Material, equipo o herramienta *",
-                ["Seleccione..."] + descripciones_disponibles,
-                key="material_descripcion",
-                disabled=(tipo == "Seleccione...")
+            # Para un tipo libre no existe unidad asociada al padrón.
+            # Se oculta el campo UNIDAD_MEDIDA y se guarda vacío.
+            unidad_medida = ""
+
+        else:
+            descripciones_disponibles = sorted({
+                fila["DESCRIPCION"] for fila in registros_tipo
+            })
+
+            with col_material:
+                material = st.selectbox(
+                    "Material, equipo o herramienta *",
+                    ["Seleccione..."] + descripciones_disponibles,
+                    key="material_descripcion",
+                    disabled=(tipo_seleccionado == "Seleccione...")
+                )
+
+            registro_material = next(
+                (
+                    fila for fila in registros_tipo
+                    if fila["DESCRIPCION"] == material
+                ),
+                {}
             )
+            unidad_medida = registro_material.get("UNIDAD_MEDIDA", "")
 
-        registro_material = next(
-            (
-                fila for fila in registros_tipo
-                if fila["DESCRIPCION"] == material
-            ),
-            {}
-        )
-        unidad_medida = registro_material.get("UNIDAD_MEDIDA", "")
-
-        with col_unidad:
-            st.text_input(
-                "UNIDAD_MEDIDA",
-                value=unidad_medida,
-                disabled=True,
-                key=f"material_unidad_medida_{normalizar_clave(material)}"
-            )
+            with col_unidad:
+                st.text_input(
+                    "UNIDAD_MEDIDA",
+                    value=unidad_medida,
+                    disabled=True,
+                    key=f"material_unidad_medida_{normalizar_clave(material)}"
+                )
 
         with col_cantidad:
             cantidad = st.number_input(
@@ -1834,11 +1854,12 @@ elif modulo == "📦 Materiales":
 
             if (
                 contrato == "Seleccione..."
-                or tipo == "Seleccione..."
-                or material == "Seleccione..."
+                or tipo_seleccionado == "Seleccione..."
+                or not material
+                or (not es_tipo_otro and material == "Seleccione...")
                 or uunn == "Seleccione..."
                 or localidad == "Seleccione..."
-                or not unidad_medida
+                or (not es_tipo_otro and not unidad_medida)
             ):
                 st.warning(
                     "Selecciona el contrato, el tipo y el material del padrón de materiales, "
