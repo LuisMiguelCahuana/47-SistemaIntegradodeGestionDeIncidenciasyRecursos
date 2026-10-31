@@ -1164,6 +1164,21 @@ elif modulo == "👤 Personal":
                     disabled=True
                 )
 
+                fecha_salida = st.date_input(
+                    "Fecha de salida *",
+                    format="DD/MM/YYYY",
+                    key=f"personal_fecha_salida_{personal_form_version}"
+                )
+
+                estado = st.selectbox(
+                    "Estado *",
+                    [
+                        "PENDIENTE",
+                        "REPUESTO"
+                    ],
+                    key=f"personal_estado_{personal_form_version}"
+                )
+
             with col2:
 
                 st.text_input(
@@ -1196,23 +1211,6 @@ elif modulo == "👤 Personal":
                     placeholder="Ingrese detalles adicionales...",
                     height=160,
                     key=f"personal_observaciones_{personal_form_version}"
-                )
-
-                # Fecha de salida y Estado quedan en la columna izquierda,
-                # debajo de Localidad y DNI.
-                fecha_salida = st.date_input(
-                    "Fecha de salida *",
-                    format="DD/MM/YYYY",
-                    key=f"personal_fecha_salida_{personal_form_version}"
-                )
-
-                estado = st.selectbox(
-                    "Estado *",
-                    [
-                        "PENDIENTE",
-                        "REPUESTO"
-                    ],
-                    key=f"personal_estado_{personal_form_version}"
                 )
 
                 # La fecha de incorporación se registra posteriormente
