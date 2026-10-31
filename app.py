@@ -387,13 +387,25 @@ def guardar_registro(nombre_hoja, encabezados, datos):
                 "con los campos del formulario. Revisa la primera fila."
             )
 
-        # Construir fila respetando el orden real de la hoja
+        # Construir fila respetando el orden real de la hoja.
+        # En Material, UNIDAD_MEDIDA solo se escribe en su primera aparición
+        # (columna F); si existe un encabezado duplicado más adelante
+        # (por ejemplo, en la columna M), esa celda queda vacía.
         nueva_fila = []
+        unidad_medida_escrita = False
 
         for encabezado in encabezados_normalizados:
 
-            valor = datos_normalizados.get(encabezado, "")
+            if (
+                nombre_hoja == "Material"
+                and encabezado == normalizar_encabezado("UNIDAD_MEDIDA")
+            ):
+                if unidad_medida_escrita:
+                    nueva_fila.append("")
+                    continue
+                unidad_medida_escrita = True
 
+            valor = datos_normalizados.get(encabezado, "")
             nueva_fila.append(valor)
 
         # Guardar registro
@@ -996,7 +1008,8 @@ HEADERS_MATERIAL = [
     "CANTIDAD_FALTANTE",
     "FECHA_INICIO",
     "FECHA_REPOSICION",
-    "ESTADO"
+    "ESTADO",
+    "OBSERVACIONES"
 ]
 
 
@@ -1728,6 +1741,13 @@ elif modulo == "📦 Materiales":
             key="material_estado"
         )
 
+        observaciones = st.text_area(
+            "Observaciones",
+            placeholder="Ej. Se recibieron 20 unidades.",
+            height=120,
+            key="material_observaciones"
+        )
+
         guardar = st.button(
             "💾 GUARDAR REGISTRO",
             use_container_width=True,
@@ -1767,7 +1787,8 @@ elif modulo == "📦 Materiales":
                     "CANTIDAD_FALTANTE": int(cantidad),
                     "FECHA_INICIO": fecha_texto(fecha_inicio),
                     "FECHA_REPOSICION": "",
-                    "ESTADO": estado
+                    "ESTADO": estado,
+                    "OBSERVACIONES": observaciones.strip()
                 }
 
                 ok, mensaje = guardar_registro(
