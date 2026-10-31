@@ -19,6 +19,7 @@ st.set_page_config(
 
 SPREADSHEET_ID = "1AJ94Nrvlg7T4994K3qD_gD7dv6JZ563hJSf8hvPhOTA"
 PADRON_VEHICULOS_ID = "1osj3Usp1MhN0U97r7E4W2tYXNa9kmmNDtQRE6MkAQ_U"
+PADRON_PERSONAL_ID = "1OEmtvbamJhKX_TbrBYDwNIuWFlYY_U66EAUfXZ42Eys"
 
 # Archivo de Google Sheets que administra los usuarios de SIGIR.
 SPREADSHEET_USUARIOS_ID = "1CnZME_yWF5rLyjOOUoh8izIk8GE3tLPoMRj8Uzgu-38"
@@ -156,6 +157,82 @@ def normalizar_clave(valor):
         if unicodedata.category(caracter) != "Mn"
     )
     return re.sub(r"[^A-Z0-9]", "", valor)
+
+
+@st.cache_data(ttl=300)
+def cargar_padron_personal():
+    """
+    Lee el padrón de trabajadores desde Google Sheets.
+    Se utiliza la primera pestaña y se conserva el DNI como texto
+    para no perder ceros iniciales.
+    """
+    credenciales = Credentials.from_service_account_info(
+        dict(st.secrets["gcp_service_account"]),
+        scopes=SCOPES
+    )
+    cliente = gspread.authorize(credenciales)
+    archivo = cliente.open_by_key(PADRON_PERSONAL_ID)
+    hoja = archivo.get_worksheet(0)
+
+    valores = hoja.get_all_values()
+    if not valores or len(valores) < 2:
+        raise ValueError(
+            "El padrón de personal no contiene encabezados y registros "
+            "en la primera pestaña."
+        )
+
+    encabezados = [normalizar_clave(x) for x in valores[0]]
+    requeridas = {
+        "CONTRATO": "CONTRATO",
+        "UUNN": "UUNN",
+        "APELLIDOSYNOMBRES": "APELLIDOS Y NOMBRES",
+        "DNI": "DNI",
+        "CARGO": "CARGO"
+    }
+
+    indices = {}
+    for clave, etiqueta in requeridas.items():
+        if clave not in encabezados:
+            raise ValueError(
+                f"No se encontró la columna '{etiqueta}' en el padrón. "
+                "Verifica los encabezados de la primera pestaña."
+            )
+        indices[clave] = encabezados.index(clave)
+
+    salida = []
+    for fila in valores[1:]:
+        if not any(str(celda).strip() for celda in fila):
+            continue
+
+        def valor_columna(clave):
+            indice = indices[clave]
+            return str(fila[indice]).strip() if indice < len(fila) else ""
+
+        contrato = valor_columna("CONTRATO")
+        uunn = valor_columna("UUNN")
+        nombre = valor_columna("APELLIDOSYNOMBRES")
+        dni = valor_columna("DNI")
+        cargo = valor_columna("CARGO")
+
+        # Omitir filas incompletas que no permitan identificar al trabajador.
+        if not all([contrato, uunn, nombre, dni, cargo]):
+            continue
+
+        salida.append({
+            "CONTRATO": contrato,
+            "UUNN": uunn.upper(),
+            "APELLIDOS Y NOMBRES": nombre,
+            "DNI": dni,
+            "CARGO": cargo
+        })
+
+    if not salida:
+        raise ValueError(
+            "No se encontraron trabajadores con CONTRATO, UUNN, "
+            "APELLIDOS Y NOMBRES, DNI y CARGO completos."
+        )
+
+    return salida
 
 
 # =====================================================
@@ -936,8 +1013,8 @@ elif modulo == "👤 Personal":
     st.subheader("👤 Registro de incidencias de personal")
 
     st.info(
-        "Registra renuncias, vacaciones, licencias, "
-        "descansos médicos y otras incidencias."
+        "Selecciona al trabajador desde el padrón maestro. "
+        "El contrato, la UUNN, el DNI y el cargo se completarán automáticamente."
     )
 
     # El formulario conserva los datos cuando hay errores de validación.
@@ -947,177 +1024,290 @@ elif modulo == "👤 Personal":
 
     personal_form_version = st.session_state["personal_form_version"]
 
-    with st.form(
-        f"form_personal_{personal_form_version}",
-        clear_on_submit=False
-    ):
+    try:
+        padron_personal = cargar_padron_personal()
 
-        col1, col2 = st.columns(2)
+        contratos_personal = sorted({
+            fila["CONTRATO"] for fila in padron_personal
+        })
 
-        with col1:
+        contrato_key = f"personal_padron_contrato_{personal_form_version}"
+        contrato = st.selectbox(
+            "Contrato *",
+            ["Seleccione..."] + contratos_personal,
+            key=contrato_key
+        )
 
-            contrato = st.text_input(
-                "Contrato *",
-                placeholder="Ej. GR-022-2023/ELECTO",
-                key=f"personal_contrato_{personal_form_version}"
-            )
+        registros_contrato = (
+            [
+                fila for fila in padron_personal
+                if fila["CONTRATO"] == contrato
+            ]
+            if contrato != "Seleccione..." else []
+        )
 
-            denominacion = st.text_input(
-                "Denominación *",
-                placeholder="Ej. EBAR",
-                key=f"personal_denominacion_{personal_form_version}"
-            )
+        uunn_disponibles = sorted({
+            fila["UUNN"] for fila in registros_contrato
+        })
 
+        # La clave cambia al cambiar el contrato para reiniciar la selección dependiente.
+        contrato_token = str(contratos_personal.index(contrato)) if contrato in contratos_personal else "ninguno"
+        uunn_key = (
+            f"personal_padron_uunn_{personal_form_version}_{contrato_token}"
+        )
+
+        col_uunn, col_nombre = st.columns(2)
+
+        with col_uunn:
             uunn = st.selectbox(
                 "UUNN/SSEE *",
-                [
-                    "HUANCAYO",
-                    "PASCO",
-                    "TARMA",
-                    "LA MERCED",
-                    "SATIPO",
-                    "OTRO"
-                ],
-                key=f"personal_uunn_{personal_form_version}"
+                ["Seleccione..."] + uunn_disponibles,
+                key=uunn_key,
+                disabled=(contrato == "Seleccione...")
             )
 
-            personal = st.text_input(
+        registros_uunn = (
+            [
+                fila for fila in registros_contrato
+                if fila["UUNN"] == uunn
+            ]
+            if uunn != "Seleccione..." else []
+        )
+
+        # Se conservan índices para distinguir trabajadores con nombres iguales.
+        indices_trabajadores = [
+            i for i, fila in enumerate(padron_personal)
+            if (
+                fila["CONTRATO"] == contrato
+                and fila["UUNN"] == uunn
+            )
+        ]
+
+        uunn_token = str(uunn_disponibles.index(uunn)) if uunn in uunn_disponibles else "ninguna"
+        nombre_key = (
+            f"personal_padron_nombre_{personal_form_version}_"
+            f"{contrato_token}_{uunn_token}"
+        )
+
+        def etiqueta_trabajador(indice):
+            fila = padron_personal[indice]
+            return f'{fila["APELLIDOS Y NOMBRES"]} | DNI: {fila["DNI"]}'
+
+        with col_nombre:
+            indice_personal = st.selectbox(
                 "Nombre del personal *",
-                key=f"personal_nombre_{personal_form_version}"
+                [-1] + indices_trabajadores,
+                format_func=lambda indice: (
+                    "Seleccione un trabajador..."
+                    if indice == -1 else etiqueta_trabajador(indice)
+                ),
+                key=nombre_key,
+                disabled=(uunn == "Seleccione...")
             )
 
-            dni = st.text_input(
-                "DNI",
-                max_chars=8,
-                key=f"personal_dni_{personal_form_version}"
-            )
-
-        with col2:
-
-            cargo = st.text_input(
-                "Cargo *",
-                key=f"personal_cargo_{personal_form_version}"
-            )
-
-            tipo_incidencia = st.selectbox(
-                "Tipo de incidencia *",
-                [
-                    "RENUNCIA",
-                    "CESE",
-                    "VACACIONES",
-                    "LICENCIA",
-                    "DESCANSO MEDICO",
-                    "PERMISO",
-                    "FALTA",
-                    "OTRO"
-                ],
-                key=f"personal_tipo_incidencia_{personal_form_version}"
-            )
-
-            fecha_salida = st.date_input(
-                "Fecha de salida *",
-                format="DD/MM/YYYY",
-                key=f"personal_fecha_salida_{personal_form_version}"
-            )
-
-            # La fecha de incorporación se registra posteriormente
-            # desde el módulo "Actualizar registros".
-            fecha_incorporacion = None
-
-            estado = st.selectbox(
-                "Estado *",
-                [
-                    "PENDIENTE",
-                    "REPUESTO"
-                ],
-                key=f"personal_estado_{personal_form_version}"
-            )
-
-        observaciones = st.text_area(
-            "Observaciones",
-            placeholder="Ingrese detalles adicionales...",
-            key=f"personal_observaciones_{personal_form_version}"
+        trabajador_seleccionado = (
+            padron_personal[indice_personal]
+            if indice_personal != -1 else {}
         )
 
-        guardar = st.form_submit_button(
-            "💾 GUARDAR REGISTRO",
-            use_container_width=True
+        if trabajador_seleccionado:
+            st.caption(
+                "Trabajador seleccionado desde el padrón maestro. "
+                "El DNI y el cargo se completan automáticamente."
+            )
+        else:
+            st.caption(
+                "Primero selecciona el contrato, la UUNN y el trabajador."
+            )
+
+        contrato = trabajador_seleccionado.get("CONTRATO", "")
+        uunn = trabajador_seleccionado.get("UUNN", "")
+        personal = trabajador_seleccionado.get("APELLIDOS Y NOMBRES", "")
+        dni = trabajador_seleccionado.get("DNI", "")
+        cargo = trabajador_seleccionado.get("CARGO", "")
+
+        # Clave individual para que DNI y cargo se actualicen al elegir otro trabajador.
+        trabajador_token = (
+            str(indice_personal) if indice_personal != -1 else "sin_seleccion"
         )
 
-        if guardar:
+        with st.form(
+            f"form_personal_{personal_form_version}",
+            clear_on_submit=False
+        ):
 
-            if not all([
-                contrato.strip(),
-                denominacion.strip(),
-                personal.strip(),
-                cargo.strip()
-            ]):
+            col1, col2 = st.columns(2)
 
-                st.warning(
-                    "Completa los campos obligatorios."
+            with col1:
+
+                denominacion = st.text_input(
+                    "Denominación *",
+                    placeholder="Ej. EBAR",
+                    key=f"personal_denominacion_{personal_form_version}"
                 )
 
-            elif dni and (
-                not dni.isdigit() or len(dni) != 8
-            ):
-
-                st.warning("El DNI debe contener 8 dígitos.")
-
-            elif (
-                fecha_incorporacion is not None
-                and fecha_incorporacion < fecha_salida
-            ):
-
-                st.warning(
-                    "La fecha de incorporación no puede "
-                    "ser anterior a la fecha de salida."
+                st.text_input(
+                    "DNI",
+                    value=dni,
+                    key=(
+                        f"personal_dni_{personal_form_version}_"
+                        f"{trabajador_token}"
+                    ),
+                    disabled=True
                 )
 
-            elif estado == "REPUESTO":
-                st.warning(
-                    "Registra inicialmente la incidencia como PENDIENTE. "
-                    "Cuando se incorpore el reemplazo, utiliza 'Actualizar registros' "
-                    "para colocar la fecha real y cambiar el estado a REPUESTO."
+            with col2:
+
+                st.text_input(
+                    "Cargo *",
+                    value=cargo,
+                    key=(
+                        f"personal_cargo_{personal_form_version}_"
+                        f"{trabajador_token}"
+                    ),
+                    disabled=True
                 )
 
-            elif conexion_ok:
-
-                datos = {
-                    "CONTRATO": contrato.strip(),
-                    "DENOMINACION": denominacion.strip(),
-                    "UUNN/SSEE": uunn,
-                    "PERSONAL": personal.strip().upper(),
-                    "DNI": dni,
-                    "CARGO": cargo.strip().upper(),
-                    "TIPO_INCIDENCIA": tipo_incidencia,
-                    "FECHA_SALIDA": fecha_texto(fecha_salida),
-                    "FECHA_INCORPRACION / NUEVO PERSONAL":
-                        fecha_texto(fecha_incorporacion),
-                    "ESTADO": estado,
-                    "OBSERVACIONES": observaciones.strip()
-                }
-
-                ok, mensaje = guardar_registro(
-                    "Personal",
-                    HEADERS_PERSONAL,
-                    datos
+                tipo_incidencia = st.selectbox(
+                    "Tipo de incidencia *",
+                    [
+                        "RENUNCIA",
+                        "CESE",
+                        "VACACIONES",
+                        "LICENCIA",
+                        "DESCANSO MEDICO",
+                        "PERMISO",
+                        "FALTA",
+                        "OTRO"
+                    ],
+                    key=f"personal_tipo_incidencia_{personal_form_version}"
                 )
 
-                if ok:
-                    st.session_state["mensaje_personal_guardado"] = (
-                        "✅ " + mensaje
+                fecha_salida = st.date_input(
+                    "Fecha de salida *",
+                    format="DD/MM/YYYY",
+                    key=f"personal_fecha_salida_{personal_form_version}"
+                )
+
+                # La fecha de incorporación se registra posteriormente
+                # desde el módulo "Actualizar registros".
+                fecha_incorporacion = None
+
+                estado = st.selectbox(
+                    "Estado *",
+                    [
+                        "PENDIENTE",
+                        "REPUESTO"
+                    ],
+                    key=f"personal_estado_{personal_form_version}"
+                )
+
+            observaciones = st.text_area(
+                "Observaciones",
+                placeholder="Ingrese detalles adicionales...",
+                key=f"personal_observaciones_{personal_form_version}"
+            )
+
+            guardar = st.form_submit_button(
+                "💾 GUARDAR REGISTRO",
+                use_container_width=True
+            )
+
+            if guardar:
+
+                if not all([
+                    contrato.strip(),
+                    uunn.strip(),
+                    personal.strip(),
+                    dni.strip(),
+                    cargo.strip(),
+                    denominacion.strip()
+                ]):
+
+                    st.warning(
+                        "Selecciona un trabajador del padrón y completa la denominación."
                     )
-                    st.session_state["personal_form_version"] += 1
-                    st.rerun()
-                else:
-                    # No se modifica la versión del formulario:
-                    # todos los datos ingresados permanecen visibles.
-                    st.error(mensaje)
 
-    if st.session_state.get("mensaje_personal_guardado"):
-        st.success(st.session_state.pop("mensaje_personal_guardado"))
+                elif not dni.isdigit() or len(dni) != 8:
 
+                    st.warning(
+                        "El DNI del trabajador seleccionado debe contener 8 dígitos. "
+                        "Verifica el dato en el padrón maestro."
+                    )
 
+                elif (
+                    fecha_incorporacion is not None
+                    and fecha_incorporacion < fecha_salida
+                ):
+
+                    st.warning(
+                        "La fecha de incorporación no puede "
+                        "ser anterior a la fecha de salida."
+                    )
+
+                elif estado == "REPUESTO":
+                    st.warning(
+                        "Registra inicialmente la incidencia como PENDIENTE. "
+                        "Cuando se incorpore el reemplazo, utiliza 'Actualizar registros' "
+                        "para colocar la fecha real y cambiar el estado a REPUESTO."
+                    )
+
+                elif conexion_ok:
+
+                    datos = {
+                        "CONTRATO": contrato.strip(),
+                        "DENOMINACION": denominacion.strip(),
+                        "UUNN/SSEE": uunn,
+                        "PERSONAL": personal.strip().upper(),
+                        "DNI": dni,
+                        "CARGO": cargo.strip().upper(),
+                        "TIPO_INCIDENCIA": tipo_incidencia,
+                        "FECHA_SALIDA": fecha_texto(fecha_salida),
+                        "FECHA_INCORPRACION / NUEVO PERSONAL":
+                            fecha_texto(fecha_incorporacion),
+                        "ESTADO": estado,
+                        "OBSERVACIONES": observaciones.strip()
+                    }
+
+                    ok, mensaje = guardar_registro(
+                        "Personal",
+                        HEADERS_PERSONAL,
+                        datos
+                    )
+
+                    if ok:
+                        st.session_state["mensaje_personal_guardado"] = (
+                            "✅ " + mensaje
+                        )
+                        st.session_state["personal_form_version"] += 1
+                        st.rerun()
+                    else:
+                        # No se modifica la versión del formulario:
+                        # todos los datos ingresados permanecen visibles.
+                        st.error(mensaje)
+
+        if st.session_state.get("mensaje_personal_guardado"):
+            st.success(st.session_state.pop("mensaje_personal_guardado"))
+
+    except Exception as error:
+        st.error(
+            "No se pudo cargar el padrón maestro de personal desde Google Sheets."
+        )
+        st.caption(
+            "Verifica que la cuenta de servicio configurada en Streamlit Secrets "
+            "tenga acceso de lector al archivo y que la primera pestaña contenga "
+            "las columnas CONTRATO, UUNN, APELLIDOS Y NOMBRES, DNI y CARGO."
+        )
+        try:
+            correo_servicio = st.secrets["gcp_service_account"].get("client_email", "")
+            if correo_servicio:
+                st.info(
+                    f"Comparte el Google Sheets con esta cuenta de servicio: "
+                    f"{correo_servicio}"
+                )
+        except Exception:
+            pass
+        st.caption(f"Detalle técnico: {error}")
 # =====================================================
 # FORMULARIO 2: VEHÍCULOS
 # =====================================================
