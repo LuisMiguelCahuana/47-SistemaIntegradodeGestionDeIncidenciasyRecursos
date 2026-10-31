@@ -1670,7 +1670,8 @@ elif modulo == "📦 Materiales":
             fila["CONTRATO"] for fila in padron_materiales
         })
 
-        col_contrato, col_tipo = st.columns(2)
+        # FILA 1: Contrato, UUNN y Localidad
+        col_contrato, col_uunn, col_localidad = st.columns(3)
 
         with col_contrato:
             contrato = st.selectbox(
@@ -1687,51 +1688,9 @@ elif modulo == "📦 Materiales":
             if contrato != "Seleccione..." else []
         )
 
-        tipos_disponibles = sorted({
-            fila["TIPO_INSPECCION"] for fila in registros_contrato
-        })
-
-        with col_tipo:
-            tipo = st.selectbox(
-                "Tipo *",
-                ["Seleccione..."] + tipos_disponibles,
-                key="material_tipo",
-                disabled=(contrato == "Seleccione...")
-            )
-
-        registros_tipo = (
-            [
-                fila for fila in registros_contrato
-                if fila["TIPO_INSPECCION"] == tipo
-            ]
-            if tipo != "Seleccione..." else []
-        )
-
-        descripciones_disponibles = sorted({
-            fila["DESCRIPCION"] for fila in registros_tipo
-        })
-
-        material = st.selectbox(
-            "Material, equipo o herramienta *",
-            ["Seleccione..."] + descripciones_disponibles,
-            key="material_descripcion",
-            disabled=(tipo == "Seleccione...")
-        )
-
-        registro_material = next(
-            (
-                fila for fila in registros_tipo
-                if fila["DESCRIPCION"] == material
-            ),
-            {}
-        )
-        unidad_medida = registro_material.get("UNIDAD_MEDIDA", "")
-
         uunn_disponibles_material = sorted({
             fila["UUNN"] for fila in padron_ubicaciones if fila["UUNN"]
         })
-
-        col_uunn, col_localidad = st.columns(2)
 
         with col_uunn:
             uunn = st.selectbox(
@@ -1759,9 +1718,51 @@ elif modulo == "📦 Materiales":
                 disabled=(uunn == "Seleccione..." or not localidades_disponibles)
             )
 
-        # Mostrar explícitamente la unidad de medida obtenida del padrón
-        # y mantener la cantidad como dato numérico independiente.
-        col_unidad, col_cantidad = st.columns(2)
+        # FILA 2: Tipo, Material, Unidad de medida y Cantidad faltante
+        col_tipo, col_material, col_unidad, col_cantidad = st.columns(
+            [1, 1.7, 0.8, 1]
+        )
+
+        tipos_disponibles = sorted({
+            fila["TIPO_INSPECCION"] for fila in registros_contrato
+        })
+
+        with col_tipo:
+            tipo = st.selectbox(
+                "Tipo *",
+                ["Seleccione..."] + tipos_disponibles,
+                key="material_tipo",
+                disabled=(contrato == "Seleccione...")
+            )
+
+        registros_tipo = (
+            [
+                fila for fila in registros_contrato
+                if fila["TIPO_INSPECCION"] == tipo
+            ]
+            if tipo != "Seleccione..." else []
+        )
+
+        descripciones_disponibles = sorted({
+            fila["DESCRIPCION"] for fila in registros_tipo
+        })
+
+        with col_material:
+            material = st.selectbox(
+                "Material, equipo o herramienta *",
+                ["Seleccione..."] + descripciones_disponibles,
+                key="material_descripcion",
+                disabled=(tipo == "Seleccione...")
+            )
+
+        registro_material = next(
+            (
+                fila for fila in registros_tipo
+                if fila["DESCRIPCION"] == material
+            ),
+            {}
+        )
+        unidad_medida = registro_material.get("UNIDAD_MEDIDA", "")
 
         with col_unidad:
             st.text_input(
@@ -1780,7 +1781,15 @@ elif modulo == "📦 Materiales":
                 key="material_cantidad"
             )
 
-        col_incidencia, col_fecha = st.columns(2)
+        # FILA 3: Fecha de inicio, Tipo de incidencia y Estado
+        col_fecha, col_incidencia, col_estado = st.columns([1, 1.3, 1])
+
+        with col_fecha:
+            fecha_inicio = st.date_input(
+                "Fecha de inicio *",
+                format="DD/MM/YYYY",
+                key="material_fecha_inicio"
+            )
 
         with col_incidencia:
             tipo_incidencia = st.selectbox(
@@ -1797,22 +1806,17 @@ elif modulo == "📦 Materiales":
                 key="material_tipo_incidencia"
             )
 
-        with col_fecha:
-            fecha_inicio = st.date_input(
-                "Fecha de inicio *",
-                format="DD/MM/YYYY",
-                key="material_fecha_inicio"
+        with col_estado:
+            estado = st.selectbox(
+                "Estado *",
+                [
+                    "PENDIENTE",
+                    "REPUESTO"
+                ],
+                key="material_estado"
             )
 
-        estado = st.selectbox(
-            "Estado *",
-            [
-                "PENDIENTE",
-                "REPUESTO"
-            ],
-            key="material_estado"
-        )
-
+        # FILA 4: Observaciones a todo el ancho
         observaciones = st.text_area(
             "Observaciones",
             placeholder="Ej. Se recibieron 20 unidades.",
