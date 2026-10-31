@@ -402,6 +402,35 @@ def normalizar(texto):
     return re.sub(r"[^A-Z0-9]", "", texto)
 
 
+def contrato_asignado_usuario():
+    """Devuelve el contrato asignado en el inicio de sesión."""
+    return str(st.session_state.get("contrato_usuario", "")).strip()
+
+
+def usuario_tiene_todos_los_contratos():
+    return normalizar(contrato_asignado_usuario()) == "TODOS"
+
+
+def usuario_puede_ver_contrato(contrato):
+    """Autorización central: el usuario solo accede a su contrato asignado."""
+    asignado = contrato_asignado_usuario()
+    if not asignado:
+        return False
+    if normalizar(asignado) == "TODOS":
+        return True
+    return normalizar(contrato) == normalizar(asignado)
+
+
+def filtrar_por_contrato_asignado(registros):
+    """Filtra registros de padrones por el contrato de la sesión activa."""
+    if usuario_tiene_todos_los_contratos():
+        return registros
+    return [
+        registro for registro in registros
+        if usuario_puede_ver_contrato(registro.get("CONTRATO", ""))
+    ]
+
+
 def normalizar_encabezado(texto):
     """Normaliza encabezados y admite la escritura EQUPO usada en la hoja Material."""
     clave = normalizar(texto)
@@ -418,6 +447,12 @@ def guardar_registro(nombre_hoja, encabezados, datos):
 
     if not verificar_permiso("REGISTRAR"):
         return False, "No tienes permiso para registrar incidencias."
+
+    if not usuario_puede_ver_contrato(datos.get("CONTRATO", "")):
+        return False, (
+            "Acceso denegado: no puedes registrar información de un contrato "
+            "distinto al que tienes asignado."
+        )
 
     try:
 
@@ -539,7 +574,8 @@ def obtener_usuarios():
             "CONTRASEÑA": str(registro.get("CONTRASEÑA", "")).strip(),
             "NOMBRE": str(registro.get("NOMBRE", "")).strip(),
             "PERMISOS": str(registro.get("PERMISOS", "")).strip().upper(),
-            "ACTIVO": str(registro.get("ACTIVO", "")).strip().upper()
+            "ACTIVO": str(registro.get("ACTIVO", "")).strip().upper(),
+            "CONTRATO": str(registro.get("CONTRATO", "")).strip()
         }
 
     return usuarios
@@ -579,7 +615,8 @@ def cerrar_sesion():
         "autenticado",
         "usuario",
         "nombre_usuario",
-        "permisos_usuario"
+        "permisos_usuario",
+        "contrato_usuario"
     ):
         st.session_state.pop(clave, None)
 
@@ -771,6 +808,15 @@ def mostrar_inicio_sesion():
                     st.error("Usuario o contraseña incorrectos.")
                     return
 
+                contrato_asignado = datos.get("CONTRATO", "").strip()
+                if not contrato_asignado:
+                    st.error(
+                        "Tu usuario no tiene un contrato asignado. "
+                        "Solicita al administrador que complete la columna CONTRATO "
+                        "en la hoja de usuarios. Para el administrador general utiliza TODOS."
+                    )
+                    return
+
                 permisos = permisos_de_usuario(datos["PERMISOS"])
                 if not permisos:
                     st.error(
@@ -785,6 +831,7 @@ def mostrar_inicio_sesion():
                     datos["NOMBRE"] or datos["USUARIO"]
                 )
                 st.session_state["permisos_usuario"] = permisos
+                st.session_state["contrato_usuario"] = contrato_asignado
                 st.rerun()
 
             except Exception as error:
@@ -893,7 +940,14 @@ def interfaz_actualizar_registros():
 
         for numero_fila, fila in enumerate(valores[1:], start=2):
             estado_actual = fila[idx_estado].strip().upper() if idx_estado < len(fila) else ""
-            if estado_actual == "PENDIENTE":
+            if (
+                estado_actual == "PENDIENTE"
+                and usuario_puede_ver_contrato(
+                    fila[buscar_columna(encabezados, "CONTRATO") - 1]
+                    if buscar_columna(encabezados, "CONTRATO") - 1 < len(fila)
+                    else ""
+                )
+            ):
                 filas_pendientes.append((numero_fila, fila))
 
         if not filas_pendientes:
@@ -925,11 +979,20 @@ def interfaz_actualizar_registros():
         col_f_contrato, col_f_uunn, col_f_tercero = st.columns(3)
 
         with col_f_contrato:
-            contrato_filtro = st.selectbox(
-                "Contrato",
-                ["Todos"] + contratos_filtro,
-                key=f"actualizar_contrato_{tipo}"
-            )
+            if usuario_tiene_todos_los_contratos():
+                contrato_filtro = st.selectbox(
+                    "Contrato",
+                    ["Todos"] + contratos_filtro,
+                    key=f"actualizar_contrato_{tipo}"
+                )
+            else:
+                contrato_filtro = contrato_asignado_usuario()
+                st.text_input(
+                    "Contrato asignado",
+                    value=contrato_filtro,
+                    disabled=True,
+                    key=f"actualizar_contrato_bloqueado_{tipo}"
+                )
 
         filas_por_contrato = [
             (n, f) for n, f in filas_pendientes
@@ -1090,6 +1153,13 @@ def interfaz_actualizar_registros():
             if confirmar:
                 if not verificar_permiso("ACTUALIZAR"):
                     st.error("No tienes permiso para actualizar incidencias.")
+                elif not usuario_puede_ver_contrato(
+                    datos_fila.get(normalizar_encabezado("CONTRATO"), "")
+                ):
+                    st.error(
+                        "Acceso denegado: el registro seleccionado no pertenece "
+                        "al contrato asignado a tu usuario."
+                    )
                 elif nuevo_estado == "REPUESTO" and not registrar_fecha:
                     st.warning(
                         "Marca la casilla para guardar la fecha real antes de "
@@ -1237,6 +1307,9 @@ st.sidebar.caption(
         sorted(st.session_state.get("permisos_usuario", set()))
     )
 )
+st.sidebar.caption(
+    "Contrato asignado: " + contrato_asignado_usuario()
+)
 
 if st.sidebar.button("🚪 CERRAR SESIÓN", use_container_width=True):
     cerrar_sesion()
@@ -1307,7 +1380,9 @@ elif modulo == "👤 Personal":
     personal_form_version = st.session_state["personal_form_version"]
 
     try:
-        padron_personal = cargar_padron_personal()
+        padron_personal = filtrar_por_contrato_asignado(
+            cargar_padron_personal()
+        )
 
         contratos_personal = sorted({
             fila["CONTRATO"] for fila in padron_personal
@@ -1614,7 +1689,9 @@ elif modulo == "🚗 Vehículos":
     )
 
     try:
-        padron = cargar_padron_vehiculos()
+        padron = filtrar_por_contrato_asignado(
+            cargar_padron_vehiculos()
+        )
 
         contratos_disponibles = sorted({
             fila["CONTRATO"] for fila in padron if fila["CONTRATO"]
@@ -1834,8 +1911,20 @@ elif modulo == "📦 Materiales":
     )
 
     try:
-        padron_materiales = cargar_padron_materiales()
-        padron_ubicaciones = cargar_ubicaciones_padron_personal()
+        padron_materiales = filtrar_por_contrato_asignado(
+            cargar_padron_materiales()
+        )
+        padron_personal_materiales = filtrar_por_contrato_asignado(
+            cargar_padron_personal()
+        )
+        padron_ubicaciones = [
+            {
+                "CONTRATO": fila["CONTRATO"],
+                "UUNN": fila["UUNN"],
+                "LOCALIDAD": fila["LOCALIDAD"]
+            }
+            for fila in padron_personal_materiales
+        ]
 
         contratos_materiales = sorted({
             fila["CONTRATO"] for fila in padron_materiales
@@ -1859,8 +1948,13 @@ elif modulo == "📦 Materiales":
             if contrato != "Seleccione..." else []
         )
 
+        ubicaciones_contrato = [
+            fila for fila in padron_ubicaciones
+            if fila["CONTRATO"] == contrato
+        ] if contrato != "Seleccione..." else []
+
         uunn_disponibles_material = sorted({
-            fila["UUNN"] for fila in padron_ubicaciones if fila["UUNN"]
+            fila["UUNN"] for fila in ubicaciones_contrato if fila["UUNN"]
         })
 
         with col_uunn:
@@ -1872,7 +1966,7 @@ elif modulo == "📦 Materiales":
 
         localidades_disponibles = sorted({
             fila["LOCALIDAD"]
-            for fila in padron_ubicaciones
+            for fila in ubicaciones_contrato
             if fila["UUNN"] == uunn and fila["LOCALIDAD"]
         }) if uunn != "Seleccione..." else []
 
