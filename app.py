@@ -1,6 +1,7 @@
 
 import streamlit as st
 import gspread
+import pandas as pd
 import unicodedata
 import re
 
@@ -885,26 +886,129 @@ def interfaz_actualizar_registros():
             st.success("No hay incidencias pendientes en este módulo.")
             return
 
-        def etiqueta_registro(item):
-            numero_fila, fila = item
-            datos_fila = {
-                encabezados_norm[i]: fila[i] if i < len(fila) else ""
-                for i in range(len(encabezados_norm))
-            }
-            partes = [f"Fila {numero_fila}"]
-            for campo in cfg["identificadores"]:
-                valor = datos_fila.get(normalizar_encabezado(campo), "")
-                if valor:
-                    partes.append(f"{campo}: {valor}")
-            return " | ".join(partes)
+        def obtener_valor_fila(fila, campo):
+            clave = normalizar_encabezado(campo)
+            indice = next(
+                (i for i, encabezado in enumerate(encabezados_norm)
+                 if encabezado == clave),
+                None
+            )
+            if indice is None or indice >= len(fila):
+                return ""
+            return str(fila[indice]).strip()
 
-        seleccionado = st.selectbox(
-            "Selecciona la incidencia pendiente que deseas actualizar",
-            filas_pendientes,
-            format_func=etiqueta_registro
+        # Filtros rápidos en una sola fila: Contrato, UUNN y Localidad.
+        contratos_filtro = sorted({
+            obtener_valor_fila(fila, "CONTRATO")
+            for _, fila in filas_pendientes
+            if obtener_valor_fila(fila, "CONTRATO")
+        })
+
+        col_f_contrato, col_f_uunn, col_f_localidad = st.columns(3)
+
+        with col_f_contrato:
+            contrato_filtro = st.selectbox(
+                "Contrato",
+                ["Todos"] + contratos_filtro,
+                key=f"actualizar_contrato_{tipo}"
+            )
+
+        filas_por_contrato = [
+            (n, f) for n, f in filas_pendientes
+            if contrato_filtro == "Todos"
+            or obtener_valor_fila(f, "CONTRATO") == contrato_filtro
+        ]
+
+        uunn_filtro_opciones = sorted({
+            obtener_valor_fila(f, "UUNN")
+            for _, f in filas_por_contrato
+            if obtener_valor_fila(f, "UUNN")
+        })
+
+        with col_f_uunn:
+            uunn_filtro = st.selectbox(
+                "UUNN",
+                ["Todas"] + uunn_filtro_opciones,
+                key=f"actualizar_uunn_{tipo}"
+            )
+
+        filas_por_uunn = [
+            (n, f) for n, f in filas_por_contrato
+            if uunn_filtro == "Todas"
+            or obtener_valor_fila(f, "UUNN") == uunn_filtro
+        ]
+
+        localidades_filtro_opciones = sorted({
+            obtener_valor_fila(f, "LOCALIDAD")
+            for _, f in filas_por_uunn
+            if obtener_valor_fila(f, "LOCALIDAD")
+        })
+
+        with col_f_localidad:
+            localidad_filtro = st.selectbox(
+                "Localidad",
+                ["Todas"] + localidades_filtro_opciones,
+                key=f"actualizar_localidad_{tipo}"
+            )
+
+        filas_filtradas = [
+            (n, f) for n, f in filas_por_uunn
+            if localidad_filtro == "Todas"
+            or obtener_valor_fila(f, "LOCALIDAD") == localidad_filtro
+        ]
+
+        if not filas_filtradas:
+            st.info("No hay incidencias pendientes que coincidan con los filtros seleccionados.")
+            return
+
+        # Tabla seleccionable: haz clic en una fila para abrir su actualización.
+        columnas_tabla = {
+            "FILA": lambda f, n: n,
+            "CONTRATO": lambda f, n: obtener_valor_fila(f, "CONTRATO"),
+            "UUNN": lambda f, n: obtener_valor_fila(f, "UUNN"),
+            "LOCALIDAD": lambda f, n: obtener_valor_fila(f, "LOCALIDAD"),
+            "RECURSO": lambda f, n: (
+                obtener_valor_fila(f, "PERSONAL")
+                or obtener_valor_fila(f, "PLACA")
+                or obtener_valor_fila(f, "MATERIAL/EQUPO Y HERRAMIENTA")
+            ),
+            "INCIDENCIA": lambda f, n: obtener_valor_fila(f, "TIPO_INCIDENCIA"),
+            "FECHA INICIO": lambda f, n: (
+                obtener_valor_fila(f, cfg["inicio"])
+            ),
+            "ESTADO": lambda f, n: obtener_valor_fila(f, "ESTADO")
+        }
+
+        filas_tabla = [
+            {
+                nombre: funcion(fila, numero)
+                for nombre, funcion in columnas_tabla.items()
+            }
+            for numero, fila in filas_filtradas
+        ]
+
+        st.markdown("**Incidencias pendientes — selecciona una fila para actualizar**")
+        st.caption(
+            f"Se muestran {len(filas_filtradas)} incidencias pendientes. "
+            "Puedes filtrar por contrato, UUNN y localidad."
         )
 
-        numero_fila, fila_seleccionada = seleccionado
+        seleccion_tabla = st.dataframe(
+            pd.DataFrame(filas_tabla),
+            use_container_width=True,
+            hide_index=True,
+            on_select="rerun",
+            selection_mode="single-row",
+            key=f"tabla_incidencias_{tipo}"
+        )
+
+        filas_seleccionadas = seleccion_tabla.selection.rows
+        if not filas_seleccionadas:
+            st.info("Selecciona una fila de la tabla para cargar los datos de actualización.")
+            return
+
+        indice_seleccionado = filas_seleccionadas[0]
+        numero_fila, fila_seleccionada = filas_filtradas[indice_seleccionado]
         datos_fila = {
             encabezados_norm[i]: fila_seleccionada[i] if i < len(fila_seleccionada) else ""
             for i in range(len(encabezados_norm))
