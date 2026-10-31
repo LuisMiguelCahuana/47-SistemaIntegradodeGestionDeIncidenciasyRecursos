@@ -20,6 +20,7 @@ st.set_page_config(
 SPREADSHEET_ID = "1AJ94Nrvlg7T4994K3qD_gD7dv6JZ563hJSf8hvPhOTA"
 PADRON_VEHICULOS_ID = "1osj3Usp1MhN0U97r7E4W2tYXNa9kmmNDtQRE6MkAQ_U"
 PADRON_PERSONAL_ID = "1OEmtvbamJhKX_TbrBYDwNIuWFlYY_U66EAUfXZ42Eys"
+PADRON_MATERIALES_ID = "1v_lL4XGV5lX0JoFSavmtdg91-hSaeJwdBzLd-bin2E8"
 
 # Archivo de Google Sheets que administra los usuarios de SIGIR.
 SPREADSHEET_USUARIOS_ID = "1CnZME_yWF5rLyjOOUoh8izIk8GE3tLPoMRj8Uzgu-38"
@@ -233,6 +234,78 @@ def cargar_padron_personal():
         raise ValueError(
             "No se encontraron trabajadores con CONTRATO, UUNN, "
             "APELLIDOS Y NOMBRES, LOCALIDAD, DNI y CARGO completos."
+        )
+
+    return salida
+
+
+@st.cache_data(ttl=300)
+def cargar_padron_materiales():
+    """
+    Lee el padrón maestro de materiales desde Google Sheets.
+    Columnas requeridas: CONTRATO, TIPO_INSPECCION, DESCRIPCION
+    y UNIDAD_MEDIDA. Se actualiza en caché cada 5 minutos.
+    """
+    credenciales = Credentials.from_service_account_info(
+        dict(st.secrets["gcp_service_account"]),
+        scopes=SCOPES
+    )
+    cliente = gspread.authorize(credenciales)
+    archivo = cliente.open_by_key(PADRON_MATERIALES_ID)
+    hoja = archivo.get_worksheet(0)
+
+    valores = hoja.get_all_values()
+    if not valores or len(valores) < 2:
+        raise ValueError(
+            "El padrón de materiales no contiene encabezados y registros "
+            "en la primera pestaña."
+        )
+
+    encabezados = [normalizar_clave(x) for x in valores[0]]
+    requeridas = {
+        "CONTRATO": "CONTRATO",
+        "TIPOINSPECCION": "TIPO_INSPECCION",
+        "DESCRIPCION": "DESCRIPCION",
+        "UNIDADMEDIDA": "UNIDAD_MEDIDA"
+    }
+
+    indices = {}
+    for clave, etiqueta in requeridas.items():
+        if clave not in encabezados:
+            raise ValueError(
+                f"No se encontró la columna '{etiqueta}' en el padrón "
+                "de materiales. Verifica los encabezados de la primera pestaña."
+            )
+        indices[clave] = encabezados.index(clave)
+
+    salida = []
+    for fila in valores[1:]:
+        if not any(str(celda).strip() for celda in fila):
+            continue
+
+        def valor_columna(clave):
+            indice = indices[clave]
+            return str(fila[indice]).strip() if indice < len(fila) else ""
+
+        contrato = valor_columna("CONTRATO")
+        tipo = valor_columna("TIPOINSPECCION")
+        descripcion = valor_columna("DESCRIPCION")
+        unidad = valor_columna("UNIDADMEDIDA")
+
+        if not all([contrato, tipo, descripcion, unidad]):
+            continue
+
+        salida.append({
+            "CONTRATO": contrato,
+            "TIPO_INSPECCION": tipo,
+            "DESCRIPCION": descripcion,
+            "UNIDAD_MEDIDA": unidad
+        })
+
+    if not salida:
+        raise ValueError(
+            "No se encontraron materiales completos con CONTRATO, "
+            "TIPO_INSPECCION, DESCRIPCION y UNIDAD_MEDIDA."
         )
 
     return salida
@@ -913,7 +986,9 @@ HEADERS_VEHICULO = [
 HEADERS_MATERIAL = [
     "CONTRATO",
     "UUNN",
+    "TIPO",
     "MATERIAL/EQUIPO Y HERRAMIENTA",
+    "UNIDAD_MEDIDA",
     "TIPO_INCIDENCIA",
     "CANTIDAD_FALTANTE",
     "FECHA_INICIO",
@@ -1510,20 +1585,77 @@ elif modulo == "📦 Materiales":
     st.subheader("📦 Registro de materiales, equipos y herramientas")
 
     st.info(
-        "Registra faltantes, deterioros, averías "
-        "y solicitudes de reposición."
+        "Selecciona el contrato, el tipo y el material desde el padrón maestro "
+        "de Google Sheets. La unidad de medida se completará automáticamente."
     )
 
-    with st.form("form_material", clear_on_submit=True):
+    try:
+        padron_materiales = cargar_padron_materiales()
 
-        col1, col2 = st.columns(2)
+        contratos_materiales = sorted({
+            fila["CONTRATO"] for fila in padron_materiales
+        })
 
-        with col1:
+        col_contrato, col_tipo = st.columns(2)
 
-            contrato = st.text_input(
-                "Contrato *"
+        with col_contrato:
+            contrato = st.selectbox(
+                "Contrato *",
+                ["Seleccione..."] + contratos_materiales,
+                key="material_contrato"
             )
 
+        registros_contrato = (
+            [
+                fila for fila in padron_materiales
+                if fila["CONTRATO"] == contrato
+            ]
+            if contrato != "Seleccione..." else []
+        )
+
+        tipos_disponibles = sorted({
+            fila["TIPO_INSPECCION"] for fila in registros_contrato
+        })
+
+        with col_tipo:
+            tipo = st.selectbox(
+                "Tipo *",
+                ["Seleccione..."] + tipos_disponibles,
+                key="material_tipo",
+                disabled=(contrato == "Seleccione...")
+            )
+
+        registros_tipo = (
+            [
+                fila for fila in registros_contrato
+                if fila["TIPO_INSPECCION"] == tipo
+            ]
+            if tipo != "Seleccione..." else []
+        )
+
+        descripciones_disponibles = sorted({
+            fila["DESCRIPCION"] for fila in registros_tipo
+        })
+
+        material = st.selectbox(
+            "Material, equipo o herramienta *",
+            ["Seleccione..."] + descripciones_disponibles,
+            key="material_descripcion",
+            disabled=(tipo == "Seleccione...")
+        )
+
+        registro_material = next(
+            (
+                fila for fila in registros_tipo
+                if fila["DESCRIPCION"] == material
+            ),
+            {}
+        )
+        unidad_medida = registro_material.get("UNIDAD_MEDIDA", "")
+
+        col_uunn, col_cantidad = st.columns(2)
+
+        with col_uunn:
             uunn = st.selectbox(
                 "UUNN *",
                 [
@@ -1533,14 +1665,30 @@ elif modulo == "📦 Materiales":
                     "LA MERCED",
                     "SATIPO",
                     "OTRO"
-                ]
+                ],
+                key="material_uunn"
             )
 
-            material = st.text_input(
-                "Material, equipo o herramienta *",
-                placeholder="Ej. Medidor monofásico"
+        with col_cantidad:
+            etiqueta_cantidad = (
+                f"Cantidad faltante * ({unidad_medida})"
+                if unidad_medida
+                else "Cantidad faltante *"
+            )
+            cantidad = st.number_input(
+                etiqueta_cantidad,
+                min_value=1,
+                step=1,
+                value=1,
+                key="material_cantidad"
             )
 
+        if unidad_medida:
+            st.caption(f"Unidad de medida obtenida del padrón: {unidad_medida}")
+
+        col_incidencia, col_fecha = st.columns(2)
+
+        with col_incidencia:
             tipo_incidencia = st.selectbox(
                 "Tipo de incidencia *",
                 [
@@ -1551,54 +1699,54 @@ elif modulo == "📦 Materiales":
                     "PERDIDA",
                     "ROBO",
                     "OTRO"
-                ]
+                ],
+                key="material_tipo_incidencia"
             )
 
-        with col2:
-
-            cantidad = st.number_input(
-                "Cantidad faltante *",
-                min_value=1,
-                step=1,
-                value=1
-            )
-
+        with col_fecha:
             fecha_inicio = st.date_input(
                 "Fecha de inicio *",
-                format="DD/MM/YYYY"
+                format="DD/MM/YYYY",
+                key="material_fecha_inicio"
             )
 
-            # La fecha de reposición se registra posteriormente
-            # desde el módulo "Actualizar registros".
-            fecha_reposicion = None
+        col_estado, col_observaciones = st.columns([1, 2])
 
+        with col_estado:
             estado = st.selectbox(
                 "Estado *",
                 [
                     "PENDIENTE",
                     "REPUESTO"
-                ]
+                ],
+                key="material_estado"
             )
 
-        observaciones = st.text_area(
-            "Observaciones",
-            placeholder="Ej. Se recibieron 20 unidades..."
-        )
+        with col_observaciones:
+            observaciones = st.text_area(
+                "Observaciones",
+                placeholder="Ej. Se recibieron 20 unidades...",
+                key="material_observaciones",
+                height=100
+            )
 
-        guardar = st.form_submit_button(
+        guardar = st.button(
             "💾 GUARDAR REGISTRO",
-            use_container_width=True
+            use_container_width=True,
+            key="guardar_material"
         )
 
         if guardar:
 
-            if not all([
-                contrato.strip(),
-                material.strip()
-            ]):
-
+            if (
+                contrato == "Seleccione..."
+                or tipo == "Seleccione..."
+                or material == "Seleccione..."
+                or not unidad_medida
+            ):
                 st.warning(
-                    "Completa los campos obligatorios."
+                    "Selecciona el contrato, el tipo y el material "
+                    "del padrón maestro antes de guardar."
                 )
 
             elif estado == "REPUESTO":
@@ -1611,17 +1759,37 @@ elif modulo == "📦 Materiales":
             elif conexion_ok:
 
                 datos = {
-                    "CONTRATO": contrato.strip(),
+                    "CONTRATO": contrato,
                     "UUNN": uunn,
-                    "MATERIAL/EQUIPO Y HERRAMIENTA":
-                        material.strip().upper(),
+                    "TIPO": tipo,
+                    "MATERIAL/EQUIPO Y HERRAMIENTA": material.strip().upper(),
+                    "UNIDAD_MEDIDA": unidad_medida,
                     "TIPO_INCIDENCIA": tipo_incidencia,
                     "CANTIDAD_FALTANTE": int(cantidad),
                     "FECHA_INICIO": fecha_texto(fecha_inicio),
-                    "FECHA_REPOSICION": fecha_texto(fecha_reposicion),
+                    "FECHA_REPOSICION": "",
                     "ESTADO": estado,
                     "OBSERVACIONES": observaciones.strip()
                 }
+
+                # Asegura que las nuevas columnas existan en la pestaña
+                # Material antes de guardar el primer registro con el padrón.
+                hoja_material = spreadsheet.worksheet("Material")
+                encabezados_actuales = hoja_material.row_values(1)
+                claves_actuales = [normalizar(x) for x in encabezados_actuales]
+
+                for nuevo_encabezado in ("TIPO", "UNIDAD_MEDIDA"):
+                    if normalizar(nuevo_encabezado) not in claves_actuales:
+                        nueva_columna = len(encabezados_actuales) + 1
+                        if nueva_columna > hoja_material.col_count:
+                            hoja_material.add_cols(
+                                nueva_columna - hoja_material.col_count
+                            )
+                        hoja_material.update_cell(
+                            1, nueva_columna, nuevo_encabezado
+                        )
+                        encabezados_actuales.append(nuevo_encabezado)
+                        claves_actuales.append(normalizar(nuevo_encabezado))
 
                 ok, mensaje = guardar_registro(
                     "Material",
@@ -1634,6 +1802,13 @@ elif modulo == "📦 Materiales":
                     st.balloons()
                 else:
                     st.error(mensaje)
+
+    except Exception as e:
+        st.error(
+            "No se pudo cargar el padrón maestro de materiales desde Google Sheets. "
+            "Verifica que la cuenta de servicio de SIGIR tenga acceso al archivo."
+        )
+        st.caption(f"Detalle técnico: {e}")
 
 
 # =====================================================
