@@ -984,22 +984,27 @@ def interfaz_actualizar_registros():
                             "ESTADO", nuevo_estado
                         )
 
-                        # Registrar la marca de actualización solo si la hoja
-                        # ya contiene esa columna; no alterar el esquema de Material.
+                        # Registrar automáticamente la fecha y hora de actualización.
+                        # Si Material aún no tiene el encabezado, se agrega al final
+                        # para no desplazar ni sobrescribir las columnas existentes.
                         encabezados_actuales = hoja.row_values(1)
                         try:
                             col_fecha_actualizacion = buscar_columna(
                                 encabezados_actuales, "FECHA_ACTUALIZACION"
                             )
                         except ValueError:
-                            col_fecha_actualizacion = None
-
-                        if col_fecha_actualizacion is not None:
+                            col_fecha_actualizacion = len(encabezados_actuales) + 1
                             hoja.update_cell(
-                                numero_fila,
+                                1,
                                 col_fecha_actualizacion,
-                                datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+                                "FECHA_ACTUALIZACION"
                             )
+
+                        hoja.update_cell(
+                            numero_fila,
+                            col_fecha_actualizacion,
+                            datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+                        )
 
                         # OBSERVACIONES es opcional y no está en los encabezados
                         # definidos para Material.
@@ -1052,7 +1057,8 @@ HEADERS_VEHICULO = [
     "FECHA_REPORTE",
     "FECHA_REPOSICION",
     "ESTADO",
-    "OBSERVACIONES"
+    "OBSERVACIONES",
+    "FECHA_ACTUALIZACION"
 ]
 
 HEADERS_MATERIAL = [
