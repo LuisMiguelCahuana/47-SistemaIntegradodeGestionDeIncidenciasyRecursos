@@ -18,6 +18,18 @@ st.set_page_config(
     layout="wide"
 )
 
+# Limpiar los formularios únicamente después de guardar correctamente.
+# Se ejecuta al inicio del rerun, antes de volver a crear los widgets.
+_prefijos_reset = st.session_state.pop("_sigir_reset_prefijos", [])
+if _prefijos_reset:
+    for _clave in list(st.session_state.keys()):
+        if any(_clave.startswith(_prefijo) for _prefijo in _prefijos_reset):
+            st.session_state.pop(_clave, None)
+
+_mensaje_guardado = st.session_state.pop("_sigir_mensaje_guardado", None)
+if _mensaje_guardado:
+    st.success(_mensaje_guardado)
+
 SPREADSHEET_ID = "1AJ94Nrvlg7T4994K3qD_gD7dv6JZ563hJSf8hvPhOTA"
 PADRON_VEHICULOS_ID = "1osj3Usp1MhN0U97r7E4W2tYXNa9kmmNDtQRE6MkAQ_U"
 PADRON_PERSONAL_ID = "1OEmtvbamJhKX_TbrBYDwNIuWFlYY_U66EAUfXZ42Eys"
@@ -1684,7 +1696,7 @@ elif modulo == "🚗 Vehículos":
 
         # El formulario SIEMPRE permanece visible, incluso si aún no
         # se han seleccionado contrato, UUNN y placa.
-        with st.form("form_vehiculo", clear_on_submit=True):
+        with st.form("form_vehiculo", clear_on_submit=False):
 
             col_tipo, col_fecha = st.columns(2)
 
@@ -1704,7 +1716,8 @@ elif modulo == "🚗 Vehículos":
             with col_fecha:
                 fecha_reporte = st.date_input(
                     "Fecha de reporte *",
-                    format="DD/MM/YYYY"
+                    format="DD/MM/YYYY",
+                    key="vehiculo_fecha_reporte"
                 )
 
             col_descripcion, col_estado = st.columns([2, 1])
@@ -1713,18 +1726,21 @@ elif modulo == "🚗 Vehículos":
                 descripcion = st.text_area(
                     "Descripción de la incidencia *",
                     placeholder="Describa la falla o incidencia...",
-                    height=120
+                    height=120,
+                    key="vehiculo_descripcion"
                 )
 
             with col_estado:
                 estado = st.selectbox(
                     "Estado *",
-                    ["PENDIENTE", "REPUESTO"]
+                    ["PENDIENTE", "REPUESTO"],
+                    key="vehiculo_estado"
                 )
 
             observaciones = st.text_area(
                 "Observaciones",
-                placeholder="Ej. Se asignó otra camioneta..."
+                placeholder="Ej. Se asignó otra camioneta...",
+                key="vehiculo_observaciones"
             )
 
             guardar = st.form_submit_button(
@@ -1777,8 +1793,9 @@ elif modulo == "🚗 Vehículos":
                     )
 
                     if ok:
-                        st.success("✅ " + mensaje)
-                        st.balloons()
+                        st.session_state["_sigir_reset_prefijos"] = ["vehiculo_"]
+                        st.session_state["_sigir_mensaje_guardado"] = "✅ " + mensaje + " Los campos del formulario de Vehículos se limpiaron para registrar otra incidencia."
+                        st.rerun()
                     else:
                         st.error(mensaje)
 
@@ -2039,8 +2056,9 @@ elif modulo == "📦 Materiales":
                 )
 
                 if ok:
-                    st.success("✅ " + mensaje)
-                    st.balloons()
+                    st.session_state["_sigir_reset_prefijos"] = ["material_"]
+                    st.session_state["_sigir_mensaje_guardado"] = "✅ " + mensaje + " Los campos del formulario de Materiales se limpiaron para registrar otra incidencia."
+                    st.rerun()
                 else:
                     st.error(mensaje)
 
