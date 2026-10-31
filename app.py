@@ -899,14 +899,18 @@ def interfaz_actualizar_registros():
                 return ""
             return str(fila[indice]).strip()
 
-        # Filtros rápidos en una sola fila: Contrato, UUNN y Localidad.
+        # Filtros rápidos en una sola fila.
+        # Vehículos utiliza SSEE; Personal y Materiales utilizan Localidad.
+        campo_tercer_filtro = "SSEE" if tipo == "Vehículo" else "LOCALIDAD"
+        etiqueta_tercer_filtro = "SSEE" if tipo == "Vehículo" else "Localidad"
+
         contratos_filtro = sorted({
             obtener_valor_fila(fila, "CONTRATO")
             for _, fila in filas_pendientes
             if obtener_valor_fila(fila, "CONTRATO")
         })
 
-        col_f_contrato, col_f_uunn, col_f_localidad = st.columns(3)
+        col_f_contrato, col_f_uunn, col_f_tercero = st.columns(3)
 
         with col_f_contrato:
             contrato_filtro = st.selectbox(
@@ -940,23 +944,23 @@ def interfaz_actualizar_registros():
             or obtener_valor_fila(f, "UUNN") == uunn_filtro
         ]
 
-        localidades_filtro_opciones = sorted({
-            obtener_valor_fila(f, "LOCALIDAD")
+        tercer_filtro_opciones = sorted({
+            obtener_valor_fila(f, campo_tercer_filtro)
             for _, f in filas_por_uunn
-            if obtener_valor_fila(f, "LOCALIDAD")
+            if obtener_valor_fila(f, campo_tercer_filtro)
         })
 
-        with col_f_localidad:
-            localidad_filtro = st.selectbox(
-                "Localidad",
-                ["Todas"] + localidades_filtro_opciones,
-                key=f"actualizar_localidad_{tipo}"
+        with col_f_tercero:
+            tercer_filtro = st.selectbox(
+                etiqueta_tercer_filtro,
+                ["Todas"] + tercer_filtro_opciones,
+                key=f"actualizar_tercer_filtro_{tipo}"
             )
 
         filas_filtradas = [
             (n, f) for n, f in filas_por_uunn
-            if localidad_filtro == "Todas"
-            or obtener_valor_fila(f, "LOCALIDAD") == localidad_filtro
+            if tercer_filtro == "Todas"
+            or obtener_valor_fila(f, campo_tercer_filtro) == tercer_filtro
         ]
 
         if not filas_filtradas:
@@ -968,7 +972,9 @@ def interfaz_actualizar_registros():
             "FILA": lambda f, n: n,
             "CONTRATO": lambda f, n: obtener_valor_fila(f, "CONTRATO"),
             "UUNN": lambda f, n: obtener_valor_fila(f, "UUNN"),
-            "LOCALIDAD": lambda f, n: obtener_valor_fila(f, "LOCALIDAD"),
+            etiqueta_tercer_filtro.upper(): lambda f, n: obtener_valor_fila(
+                f, campo_tercer_filtro
+            ),
             "RECURSO": lambda f, n: (
                 obtener_valor_fila(f, "PERSONAL")
                 or obtener_valor_fila(f, "PLACA")
@@ -992,7 +998,7 @@ def interfaz_actualizar_registros():
         st.markdown("**Incidencias pendientes — selecciona una fila para actualizar**")
         st.caption(
             f"Se muestran {len(filas_filtradas)} incidencias pendientes. "
-            "Puedes filtrar por contrato, UUNN y localidad."
+            f"Puedes filtrar por contrato, UUNN y {etiqueta_tercer_filtro}."
         )
 
         seleccion_tabla = st.dataframe(
