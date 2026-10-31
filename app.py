@@ -186,6 +186,7 @@ def cargar_padron_personal():
         "CONTRATO": "CONTRATO",
         "UUNN": "UUNN",
         "APELLIDOSYNOMBRES": "APELLIDOS Y NOMBRES",
+        "LOCALIDAD": "LOCALIDAD",
         "DNI": "DNI",
         "CARGO": "CARGO"
     }
@@ -211,16 +212,18 @@ def cargar_padron_personal():
         contrato = valor_columna("CONTRATO")
         uunn = valor_columna("UUNN")
         nombre = valor_columna("APELLIDOSYNOMBRES")
+        localidad = valor_columna("LOCALIDAD")
         dni = valor_columna("DNI")
         cargo = valor_columna("CARGO")
 
         # Omitir filas incompletas que no permitan identificar al trabajador.
-        if not all([contrato, uunn, nombre, dni, cargo]):
+        if not all([contrato, uunn, localidad, nombre, dni, cargo]):
             continue
 
         salida.append({
             "CONTRATO": contrato,
             "UUNN": uunn.upper(),
+            "LOCALIDAD": localidad,
             "APELLIDOS Y NOMBRES": nombre,
             "DNI": dni,
             "CARGO": cargo
@@ -229,7 +232,7 @@ def cargar_padron_personal():
     if not salida:
         raise ValueError(
             "No se encontraron trabajadores con CONTRATO, UUNN, "
-            "APELLIDOS Y NOMBRES, DNI y CARGO completos."
+            "APELLIDOS Y NOMBRES, LOCALIDAD, DNI y CARGO completos."
         )
 
     return salida
@@ -883,7 +886,7 @@ def interfaz_actualizar_registros():
 
 HEADERS_PERSONAL = [
     "CONTRATO",
-    "DENOMINACION",
+    "LOCALIDAD",
     "UUNN/SSEE",
     "PERSONAL",
     "DNI",
@@ -1123,6 +1126,7 @@ elif modulo == "👤 Personal":
         contrato = trabajador_seleccionado.get("CONTRATO", "")
         uunn = trabajador_seleccionado.get("UUNN", "")
         personal = trabajador_seleccionado.get("APELLIDOS Y NOMBRES", "")
+        localidad = trabajador_seleccionado.get("LOCALIDAD", "")
         dni = trabajador_seleccionado.get("DNI", "")
         cargo = trabajador_seleccionado.get("CARGO", "")
 
@@ -1140,10 +1144,14 @@ elif modulo == "👤 Personal":
 
             with col1:
 
-                denominacion = st.text_input(
-                    "Denominación *",
-                    placeholder="Ej. EBAR",
-                    key=f"personal_denominacion_{personal_form_version}"
+                st.text_input(
+                    "Localidad *",
+                    value=localidad,
+                    key=(
+                        f"personal_localidad_{personal_form_version}_"
+                        f"{trabajador_token}"
+                    ),
+                    disabled=True
                 )
 
                 st.text_input(
@@ -1221,11 +1229,11 @@ elif modulo == "👤 Personal":
                     personal.strip(),
                     dni.strip(),
                     cargo.strip(),
-                    denominacion.strip()
+                    localidad.strip()
                 ]):
 
                     st.warning(
-                        "Selecciona un trabajador del padrón y completa la denominación."
+                        "Selecciona un trabajador del padrón para completar contrato, UUNN, localidad, nombre, DNI y cargo."
                     )
 
                 elif not dni.isdigit() or len(dni) != 8:
@@ -1256,7 +1264,7 @@ elif modulo == "👤 Personal":
 
                     datos = {
                         "CONTRATO": contrato.strip(),
-                        "DENOMINACION": denominacion.strip(),
+                        "LOCALIDAD": localidad,
                         "UUNN/SSEE": uunn,
                         "PERSONAL": personal.strip().upper(),
                         "DNI": dni,
