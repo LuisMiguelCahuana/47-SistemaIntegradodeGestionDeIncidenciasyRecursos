@@ -329,6 +329,18 @@ def normalizar(texto):
     return re.sub(r"[^A-Z0-9]", "", texto)
 
 
+def normalizar_encabezado(texto):
+    """Normaliza encabezados y admite la escritura EQUPO usada en la hoja Material."""
+    clave = normalizar(texto)
+    alias = {
+        "FECHAINCORPRACIONDELNUEVOPERSONAL":
+            "FECHAINCORPORACIONDELNUEVOPERSONAL",
+        "MATERIALEQUPOYHERRAMIENTA":
+            "MATERIALEQUIPOYHERRAMIENTA"
+    }
+    return alias.get(clave, clave)
+
+
 def guardar_registro(nombre_hoja, encabezados, datos):
 
     if not verificar_permiso("REGISTRAR"):
@@ -351,35 +363,21 @@ def guardar_registro(nombre_hoja, encabezados, datos):
 
             encabezados_hoja = encabezados
 
-        # Relacionar los encabezados con los datos
+        # Normalizar encabezados y datos, respetando los nombres reales de la hoja.
         datos_normalizados = {
-            normalizar(k): v for k, v in datos.items()
+            normalizar_encabezado(k): v for k, v in datos.items()
         }
 
-        # Alias para variaciones de escritura
-        alias = {
-            "FECHAINCORPRACIONDELNUEVOPERSONAL":
-                "FECHAINCORPORACIONDELNUEVOPERSONAL",
-            "MATERIALEQUIPOYHERRAMIENTA":
-                "MATERIALEQUIPOYHERRAMIENTA",
-            "MATERIALEQUPOYHERRAMIENTA":
-                "MATERIALEQUIPOYHERRAMIENTA"
-        }
+        encabezados_normalizados = [
+            normalizar_encabezado(encabezado)
+            for encabezado in encabezados_hoja
+        ]
 
-        encabezados_normalizados = []
-
-        for encabezado in encabezados_hoja:
-
-            clave = normalizar(encabezado)
-            clave = alias.get(clave, clave)
-
-            encabezados_normalizados.append(clave)
-
-        # Validar que estén todos los campos esperados
+        # Validar que estén todos los campos esperados.
         faltantes = [
-            normalizar(campo)
+            normalizar_encabezado(campo)
             for campo in encabezados
-            if normalizar(campo) not in encabezados_normalizados
+            if normalizar_encabezado(campo) not in encabezados_normalizados
         ]
 
         if faltantes:
@@ -716,9 +714,9 @@ def mostrar_inicio_sesion():
 
 def buscar_columna(encabezados, nombre):
     """Devuelve el índice (base 1) de una columna por nombre normalizado."""
-    objetivo = normalizar(nombre)
+    objetivo = normalizar_encabezado(nombre)
     for indice, encabezado in enumerate(encabezados, start=1):
-        if normalizar(encabezado) == objetivo:
+        if normalizar_encabezado(encabezado) == objetivo:
             return indice
     raise ValueError(f"No se encontró la columna: {nombre}")
 
@@ -786,7 +784,7 @@ def interfaz_actualizar_registros():
             "fecha_label": "Fecha de reposición / atención",
             "inicio": "FECHA_INICIO",
             "identificadores": [
-                "CONTRATO", "UUNN", "MATERIAL/EQUIPO Y HERRAMIENTA",
+                "CONTRATO", "UUNN", "MATERIAL/EQUPO Y HERRAMIENTA",
                 "CANTIDAD_FALTANTE", "FECHA_INICIO", "ESTADO"
             ]
         }
@@ -803,7 +801,7 @@ def interfaz_actualizar_registros():
             return
 
         encabezados = valores[0]
-        encabezados_norm = [normalizar(x) for x in encabezados]
+        encabezados_norm = [normalizar_encabezado(x) for x in encabezados]
 
         idx_estado = buscar_columna(encabezados, "ESTADO") - 1
         filas_pendientes = []
@@ -825,7 +823,7 @@ def interfaz_actualizar_registros():
             }
             partes = [f"Fila {numero_fila}"]
             for campo in cfg["identificadores"]:
-                valor = datos_fila.get(normalizar(campo), "")
+                valor = datos_fila.get(normalizar_encabezado(campo), "")
                 if valor:
                     partes.append(f"{campo}: {valor}")
             return " | ".join(partes)
@@ -844,10 +842,10 @@ def interfaz_actualizar_registros():
 
         st.caption(f"Registro seleccionado: fila {numero_fila} de la pestaña {cfg['hoja']}.")
 
-        fecha_guardada = datos_fila.get(normalizar(cfg["fecha"]), "")
+        fecha_guardada = datos_fila.get(normalizar_encabezado(cfg["fecha"]), "")
         fecha_actual = convertir_fecha_existente(fecha_guardada)
-        estado_actual = datos_fila.get(normalizar("ESTADO"), "PENDIENTE").upper()
-        observacion_actual = datos_fila.get(normalizar("OBSERVACIONES"), "")
+        estado_actual = datos_fila.get(normalizar_encabezado("ESTADO"), "PENDIENTE").upper()
+        observacion_actual = datos_fila.get(normalizar_encabezado("OBSERVACIONES"), "")
 
         with st.form("form_actualizar_incidencia"):
             st.markdown("**Datos de cierre de la incidencia**")
@@ -916,33 +914,37 @@ def interfaz_actualizar_registros():
                             "ESTADO", nuevo_estado
                         )
 
-                        # Registrar también cuándo se digitó la actualización.
-                        # Esta columna se agrega al final si todavía no existe.
+                        # Registrar la marca de actualización solo si la hoja
+                        # ya contiene esa columna; no alterar el esquema de Material.
                         encabezados_actuales = hoja.row_values(1)
                         try:
                             col_fecha_actualizacion = buscar_columna(
                                 encabezados_actuales, "FECHA_ACTUALIZACION"
                             )
                         except ValueError:
-                            col_fecha_actualizacion = len(encabezados_actuales) + 1
-                            if col_fecha_actualizacion > hoja.col_count:
-                                hoja.add_cols(col_fecha_actualizacion - hoja.col_count)
-                            hoja.update_cell(1, col_fecha_actualizacion, "FECHA_ACTUALIZACION")
+                            col_fecha_actualizacion = None
 
-                        hoja.update_cell(
-                            numero_fila,
-                            col_fecha_actualizacion,
-                            datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-                        )
+                        if col_fecha_actualizacion is not None:
+                            hoja.update_cell(
+                                numero_fila,
+                                col_fecha_actualizacion,
+                                datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+                            )
 
-                        actualizar_celda(
-                            hoja, encabezados, numero_fila,
-                            "OBSERVACIONES", nuevas_observaciones.strip()
-                        )
+                        # OBSERVACIONES es opcional y no está en los encabezados
+                        # definidos para Material.
+                        if any(
+                            normalizar_encabezado(x) == normalizar_encabezado("OBSERVACIONES")
+                            for x in encabezados
+                        ):
+                            actualizar_celda(
+                                hoja, encabezados, numero_fila,
+                                "OBSERVACIONES", nuevas_observaciones.strip()
+                            )
 
                         st.session_state["mensaje_actualizacion_sigir"] = (
                             "¡Actualización realizada correctamente! "
-                            "La fecha real, el estado y las observaciones se guardaron en Google Sheets."
+                            "La fecha de reposición y el estado se guardaron en Google Sheets."
                         )
                         st.rerun()
 
@@ -986,15 +988,15 @@ HEADERS_VEHICULO = [
 HEADERS_MATERIAL = [
     "CONTRATO",
     "UUNN",
+    "LOCALIDAD",
     "TIPO",
-    "MATERIAL/EQUIPO Y HERRAMIENTA",
+    "MATERIAL/EQUPO Y HERRAMIENTA",
     "UNIDAD_MEDIDA",
     "TIPO_INCIDENCIA",
     "CANTIDAD_FALTANTE",
     "FECHA_INICIO",
     "FECHA_REPOSICION",
-    "ESTADO",
-    "OBSERVACIONES"
+    "ESTADO"
 ]
 
 
@@ -1653,7 +1655,7 @@ elif modulo == "📦 Materiales":
         )
         unidad_medida = registro_material.get("UNIDAD_MEDIDA", "")
 
-        col_uunn, col_cantidad = st.columns(2)
+        col_uunn, col_localidad, col_cantidad = st.columns([1, 1, 1])
 
         with col_uunn:
             uunn = st.selectbox(
@@ -1668,6 +1670,13 @@ elif modulo == "📦 Materiales":
                 ],
                 key="material_uunn"
             )
+
+        with col_localidad:
+            localidad = st.text_input(
+                "Localidad",
+                placeholder="Ingrese la localidad (opcional)",
+                key="material_localidad"
+            ).strip()
 
         with col_cantidad:
             etiqueta_cantidad = (
@@ -1710,25 +1719,14 @@ elif modulo == "📦 Materiales":
                 key="material_fecha_inicio"
             )
 
-        col_estado, col_observaciones = st.columns([1, 2])
-
-        with col_estado:
-            estado = st.selectbox(
-                "Estado *",
-                [
-                    "PENDIENTE",
-                    "REPUESTO"
-                ],
-                key="material_estado"
-            )
-
-        with col_observaciones:
-            observaciones = st.text_area(
-                "Observaciones",
-                placeholder="Ej. Se recibieron 20 unidades...",
-                key="material_observaciones",
-                height=100
-            )
+        estado = st.selectbox(
+            "Estado *",
+            [
+                "PENDIENTE",
+                "REPUESTO"
+            ],
+            key="material_estado"
+        )
 
         guardar = st.button(
             "💾 GUARDAR REGISTRO",
@@ -1761,35 +1759,16 @@ elif modulo == "📦 Materiales":
                 datos = {
                     "CONTRATO": contrato,
                     "UUNN": uunn,
+                    "LOCALIDAD": localidad,
                     "TIPO": tipo,
-                    "MATERIAL/EQUIPO Y HERRAMIENTA": material.strip().upper(),
+                    "MATERIAL/EQUPO Y HERRAMIENTA": material.strip().upper(),
                     "UNIDAD_MEDIDA": unidad_medida,
                     "TIPO_INCIDENCIA": tipo_incidencia,
                     "CANTIDAD_FALTANTE": int(cantidad),
                     "FECHA_INICIO": fecha_texto(fecha_inicio),
                     "FECHA_REPOSICION": "",
-                    "ESTADO": estado,
-                    "OBSERVACIONES": observaciones.strip()
+                    "ESTADO": estado
                 }
-
-                # Asegura que las nuevas columnas existan en la pestaña
-                # Material antes de guardar el primer registro con el padrón.
-                hoja_material = spreadsheet.worksheet("Material")
-                encabezados_actuales = hoja_material.row_values(1)
-                claves_actuales = [normalizar(x) for x in encabezados_actuales]
-
-                for nuevo_encabezado in ("TIPO", "UNIDAD_MEDIDA"):
-                    if normalizar(nuevo_encabezado) not in claves_actuales:
-                        nueva_columna = len(encabezados_actuales) + 1
-                        if nueva_columna > hoja_material.col_count:
-                            hoja_material.add_cols(
-                                nueva_columna - hoja_material.col_count
-                            )
-                        hoja_material.update_cell(
-                            1, nueva_columna, nuevo_encabezado
-                        )
-                        encabezados_actuales.append(nuevo_encabezado)
-                        claves_actuales.append(normalizar(nuevo_encabezado))
 
                 ok, mensaje = guardar_registro(
                     "Material",
