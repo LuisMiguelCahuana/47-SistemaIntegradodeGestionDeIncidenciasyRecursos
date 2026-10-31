@@ -240,6 +240,64 @@ def cargar_padron_personal():
 
 
 @st.cache_data(ttl=300)
+def cargar_ubicaciones_padron_personal():
+    """
+    Lee únicamente UUNN y LOCALIDAD del padrón maestro de personal.
+    Permite alimentar el formulario de Materiales aunque otras columnas
+    del registro de personal estén vacías.
+    """
+    credenciales = Credentials.from_service_account_info(
+        dict(st.secrets["gcp_service_account"]),
+        scopes=SCOPES
+    )
+    cliente = gspread.authorize(credenciales)
+    archivo = cliente.open_by_key(PADRON_PERSONAL_ID)
+    hoja = archivo.get_worksheet(0)
+
+    valores = hoja.get_all_values()
+    if not valores or len(valores) < 2:
+        raise ValueError(
+            "El padrón de personal no contiene encabezados y registros "
+            "en la primera pestaña."
+        )
+
+    encabezados = [normalizar_clave(x) for x in valores[0]]
+    requeridas = {"UUNN": "UUNN", "LOCALIDAD": "LOCALIDAD"}
+    indices = {}
+
+    for clave, etiqueta in requeridas.items():
+        if clave not in encabezados:
+            raise ValueError(
+                f"No se encontró la columna '{etiqueta}' en el padrón de personal."
+            )
+        indices[clave] = encabezados.index(clave)
+
+    salida = []
+    vistos = set()
+
+    for fila in valores[1:]:
+        uunn = str(fila[indices["UUNN"]]).strip() if indices["UUNN"] < len(fila) else ""
+        localidad = str(fila[indices["LOCALIDAD"]]).strip() if indices["LOCALIDAD"] < len(fila) else ""
+
+        if not uunn or not localidad:
+            continue
+
+        clave = (uunn.upper(), localidad.upper())
+        if clave in vistos:
+            continue
+
+        vistos.add(clave)
+        salida.append({"UUNN": uunn.upper(), "LOCALIDAD": localidad})
+
+    if not salida:
+        raise ValueError(
+            "No se encontraron valores de UUNN y LOCALIDAD en el padrón de personal."
+        )
+
+    return salida
+
+
+@st.cache_data(ttl=300)
 def cargar_padron_materiales():
     """
     Lee el padrón maestro de materiales desde Google Sheets.
@@ -1606,6 +1664,7 @@ elif modulo == "📦 Materiales":
 
     try:
         padron_materiales = cargar_padron_materiales()
+        padron_ubicaciones = cargar_ubicaciones_padron_personal()
 
         contratos_materiales = sorted({
             fila["CONTRATO"] for fila in padron_materiales
@@ -1668,28 +1727,37 @@ elif modulo == "📦 Materiales":
         )
         unidad_medida = registro_material.get("UNIDAD_MEDIDA", "")
 
+        uunn_disponibles_material = sorted({
+            fila["UUNN"] for fila in padron_ubicaciones if fila["UUNN"]
+        })
+
         col_uunn, col_localidad, col_cantidad = st.columns([1, 1, 1])
 
         with col_uunn:
             uunn = st.selectbox(
                 "UUNN *",
-                [
-                    "HUANCAYO",
-                    "PASCO",
-                    "TARMA",
-                    "LA MERCED",
-                    "SATIPO",
-                    "OTRO"
-                ],
+                ["Seleccione..."] + uunn_disponibles_material,
                 key="material_uunn"
             )
 
+        localidades_disponibles = sorted({
+            fila["LOCALIDAD"]
+            for fila in padron_ubicaciones
+            if fila["UUNN"] == uunn and fila["LOCALIDAD"]
+        }) if uunn != "Seleccione..." else []
+
+        uunn_token_material = (
+            str(uunn_disponibles_material.index(uunn))
+            if uunn in uunn_disponibles_material else "sin_uunn"
+        )
+
         with col_localidad:
-            localidad = st.text_input(
-                "Localidad",
-                placeholder="Ingrese la localidad (opcional)",
-                key="material_localidad"
-            ).strip()
+            localidad = st.selectbox(
+                "Localidad *",
+                ["Seleccione..."] + localidades_disponibles,
+                key=f"material_localidad_{uunn_token_material}",
+                disabled=(uunn == "Seleccione..." or not localidades_disponibles)
+            )
 
         with col_cantidad:
             etiqueta_cantidad = (
@@ -1760,11 +1828,13 @@ elif modulo == "📦 Materiales":
                 contrato == "Seleccione..."
                 or tipo == "Seleccione..."
                 or material == "Seleccione..."
+                or uunn == "Seleccione..."
+                or localidad == "Seleccione..."
                 or not unidad_medida
             ):
                 st.warning(
-                    "Selecciona el contrato, el tipo y el material "
-                    "del padrón maestro antes de guardar."
+                    "Selecciona el contrato, el tipo y el material del padrón de materiales, "
+                    "así como la UUNN y la localidad del padrón de personal, antes de guardar."
                 )
 
             elif estado == "REPUESTO":
