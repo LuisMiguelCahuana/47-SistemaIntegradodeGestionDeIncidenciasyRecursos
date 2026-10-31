@@ -96,7 +96,7 @@ except Exception as e:
 def cargar_padron_vehiculos():
     """
     Lee el primer tab del padrón externo.
-    Columnas requeridas: CENTRO DE COSTOS, PLACA, UUNN, CONTRATO.
+    Columnas requeridas: CENTRO DE COSTOS, PLACA, UUNN, CONTRATO y SSEE (columna E).
     Se actualiza en caché cada 5 minutos.
     """
     credenciales = Credentials.from_service_account_info(
@@ -113,7 +113,8 @@ def cargar_padron_vehiculos():
         "CENTRODECOSTOS": "CENTRO DE COSTOS",
         "PLACA": "PLACA",
         "UUNN": "UUNN",
-        "CONTRATO": "CONTRATO"
+        "CONTRATO": "CONTRATO",
+        "SSEE": "SSEE"
     }
 
     salida = []
@@ -139,13 +140,14 @@ def cargar_padron_vehiculos():
             "CENTRO DE COSTOS": normalizados["CENTRODECOSTOS"],
             "PLACA": normalizados["PLACA"].upper(),
             "UUNN": normalizados["UUNN"].upper(),
-            "CONTRATO": normalizados["CONTRATO"]
+            "CONTRATO": normalizados["CONTRATO"],
+            "SSEE": normalizados["SSEE"].upper()
         })
 
     if not salida:
         raise ValueError(
             "No se encontraron vehículos. Verifica que la primera pestaña "
-            "tenga las columnas CENTRO DE COSTOS, PLACA, UUNN y CONTRATO."
+            "tenga las columnas CENTRO DE COSTOS, PLACA, UUNN, CONTRATO y SSEE."
         )
 
     return salida
@@ -1155,6 +1157,7 @@ HEADERS_PERSONAL = [
 HEADERS_VEHICULO = [
     "CONTRATO",
     "UUNN",
+    "SSEE",
     "PLACA",
     "TIPO_INCIDENCIA",
     "DESCRIPCION",
@@ -1584,7 +1587,7 @@ elif modulo == "🚗 Vehículos":
     st.subheader("🚗 Registro de incidencias de vehículos")
 
     st.info(
-        "Selecciona el contrato, la UUNN y la placa del vehículo "
+        "Selecciona el contrato, la UUNN, la SSEE y la placa del vehículo "
         "desde el padrón maestro de Google Sheets."
     )
 
@@ -1599,8 +1602,8 @@ elif modulo == "🚗 Vehículos":
             st.warning("El padrón no contiene contratos disponibles.")
             contratos_disponibles = []
 
-        # Los tres filtros permanecen en una sola fila.
-        col_contrato, col_uunn, col_placa = st.columns(3)
+        # Los cuatro filtros permanecen en una sola fila.
+        col_contrato, col_uunn, col_ssee, col_placa = st.columns(4)
 
         with col_contrato:
             contrato = st.selectbox(
@@ -1631,8 +1634,25 @@ elif modulo == "🚗 Vehículos":
             if uunn != "Seleccione..." else []
         )
 
+        ssee_disponibles = sorted({
+            fila["SSEE"] for fila in registros_unidad if fila["SSEE"]
+        })
+
+        with col_ssee:
+            ssee = st.selectbox(
+                "Seleccione SSEE *",
+                ["Seleccione..."] + ssee_disponibles,
+                key="vehiculo_ssee",
+                disabled=(uunn == "Seleccione...")
+            )
+
+        registros_ssee = (
+            [fila for fila in registros_unidad if fila["SSEE"] == ssee]
+            if ssee != "Seleccione..." else []
+        )
+
         placas_disponibles = sorted({
-            fila["PLACA"] for fila in registros_unidad if fila["PLACA"]
+            fila["PLACA"] for fila in registros_ssee if fila["PLACA"]
         })
 
         with col_placa:
@@ -1640,12 +1660,12 @@ elif modulo == "🚗 Vehículos":
                 "Seleccione placa del vehículo *",
                 ["Seleccione..."] + placas_disponibles,
                 key="vehiculo_placa",
-                disabled=(uunn == "Seleccione...")
+                disabled=(ssee == "Seleccione...")
             )
 
         fila_vehiculo = next(
             (
-                fila for fila in registros_unidad
+                fila for fila in registros_ssee
                 if fila["PLACA"] == placa
             ),
             {}
@@ -1708,9 +1728,14 @@ elif modulo == "🚗 Vehículos":
 
             if guardar:
 
-                if contrato == "Seleccione..." or uunn == "Seleccione..." or placa == "Seleccione...":
+                if (
+                    contrato == "Seleccione..."
+                    or uunn == "Seleccione..."
+                    or ssee == "Seleccione..."
+                    or placa == "Seleccione..."
+                ):
                     st.warning(
-                        "Selecciona el contrato, la UUNN y la placa del vehículo "
+                        "Selecciona el contrato, la UUNN, la SSEE y la placa del vehículo "
                         "antes de guardar el registro."
                     )
 
@@ -1729,6 +1754,7 @@ elif modulo == "🚗 Vehículos":
                     datos = {
                         "CONTRATO": contrato,
                         "UUNN": uunn,
+                        "SSEE": ssee,
                         "PLACA": placa,
                         "TIPO_INCIDENCIA": tipo_incidencia,
                         "DESCRIPCION": descripcion.strip(),
