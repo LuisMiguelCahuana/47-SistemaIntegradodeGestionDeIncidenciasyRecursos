@@ -1731,7 +1731,7 @@ elif modulo == "📦 Materiales":
             fila["UUNN"] for fila in padron_ubicaciones if fila["UUNN"]
         })
 
-        col_uunn, col_localidad, col_cantidad = st.columns([1, 1, 1])
+        col_uunn, col_localidad = st.columns(2)
 
         with col_uunn:
             uunn = st.selectbox(
@@ -1759,22 +1759,26 @@ elif modulo == "📦 Materiales":
                 disabled=(uunn == "Seleccione..." or not localidades_disponibles)
             )
 
-        with col_cantidad:
-            etiqueta_cantidad = (
-                f"Cantidad faltante * ({unidad_medida})"
-                if unidad_medida
-                else "Cantidad faltante *"
+        # Mostrar explícitamente la unidad de medida obtenida del padrón
+        # y mantener la cantidad como dato numérico independiente.
+        col_unidad, col_cantidad = st.columns(2)
+
+        with col_unidad:
+            st.text_input(
+                "UNIDAD_MEDIDA",
+                value=unidad_medida,
+                disabled=True,
+                key=f"material_unidad_medida_{normalizar_clave(material)}"
             )
+
+        with col_cantidad:
             cantidad = st.number_input(
-                etiqueta_cantidad,
+                "Cantidad faltante *",
                 min_value=1,
                 step=1,
                 value=1,
                 key="material_cantidad"
             )
-
-        if unidad_medida:
-            st.caption(f"Unidad de medida obtenida del padrón: {unidad_medida}")
 
         col_incidencia, col_fecha = st.columns(2)
 
