@@ -1191,24 +1191,29 @@ elif modulo == "👤 Personal":
                     key=f"personal_tipo_incidencia_{personal_form_version}"
                 )
 
-                fecha_salida = st.date_input(
-                    "Fecha de salida *",
-                    format="DD/MM/YYYY",
-                    key=f"personal_fecha_salida_{personal_form_version}"
-                )
+                # Fecha de salida y Estado se muestran en una sola fila.
+                col_fecha_salida, col_estado = st.columns(2)
+
+                with col_fecha_salida:
+                    fecha_salida = st.date_input(
+                        "Fecha de salida *",
+                        format="DD/MM/YYYY",
+                        key=f"personal_fecha_salida_{personal_form_version}"
+                    )
+
+                with col_estado:
+                    estado = st.selectbox(
+                        "Estado *",
+                        [
+                            "PENDIENTE",
+                            "REPUESTO"
+                        ],
+                        key=f"personal_estado_{personal_form_version}"
+                    )
 
                 # La fecha de incorporación se registra posteriormente
                 # desde el módulo "Actualizar registros".
                 fecha_incorporacion = None
-
-                estado = st.selectbox(
-                    "Estado *",
-                    [
-                        "PENDIENTE",
-                        "REPUESTO"
-                    ],
-                    key=f"personal_estado_{personal_form_version}"
-                )
 
             observaciones = st.text_area(
                 "Observaciones",
