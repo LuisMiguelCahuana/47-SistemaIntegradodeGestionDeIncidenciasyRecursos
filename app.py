@@ -1602,6 +1602,10 @@ elif modulo == "👤 Personal":
 
 elif modulo == "🚗 Vehículos":
 
+    if "vehiculo_form_version" not in st.session_state:
+        st.session_state["vehiculo_form_version"] = 0
+    vehiculo_form_version = st.session_state["vehiculo_form_version"]
+
     st.subheader("🚗 Registro de incidencias de vehículos")
 
     st.info(
@@ -1627,7 +1631,7 @@ elif modulo == "🚗 Vehículos":
             contrato = st.selectbox(
                 "Seleccione contrato *",
                 ["Seleccione..."] + contratos_disponibles,
-                key="vehiculo_contrato"
+                key=f"vehiculo_contrato_{vehiculo_form_version}"
             )
 
         registros_contrato = (
@@ -1643,7 +1647,7 @@ elif modulo == "🚗 Vehículos":
             uunn = st.selectbox(
                 "Seleccione UUNN *",
                 ["Seleccione..."] + uunn_disponibles,
-                key="vehiculo_uunn",
+                key=f"vehiculo_uunn_{vehiculo_form_version}",
                 disabled=(contrato == "Seleccione...")
             )
 
@@ -1660,7 +1664,7 @@ elif modulo == "🚗 Vehículos":
             ssee = st.selectbox(
                 "Seleccione SSEE *",
                 ["Seleccione..."] + ssee_disponibles,
-                key="vehiculo_ssee",
+                key=f"vehiculo_ssee_{vehiculo_form_version}",
                 disabled=(uunn == "Seleccione...")
             )
 
@@ -1677,7 +1681,7 @@ elif modulo == "🚗 Vehículos":
             placa = st.selectbox(
                 "Seleccione placa del vehículo *",
                 ["Seleccione..."] + placas_disponibles,
-                key="vehiculo_placa",
+                key=f"vehiculo_placa_{vehiculo_form_version}",
                 disabled=(ssee == "Seleccione...")
             )
 
@@ -1710,14 +1714,15 @@ elif modulo == "🚗 Vehículos":
                         "MANTENIMIENTO CORRECTIVO",
                         "DOCUMENTACION",
                         "OTRO"
-                    ]
+                    ],
+                    key=f"vehiculo_tipo_incidencia_{vehiculo_form_version}"
                 )
 
             with col_fecha:
                 fecha_reporte = st.date_input(
                     "Fecha de reporte *",
                     format="DD/MM/YYYY",
-                    key="vehiculo_fecha_reporte"
+                    key=f"vehiculo_fecha_reporte_{vehiculo_form_version}"
                 )
 
             col_descripcion, col_estado = st.columns([2, 1])
@@ -1727,20 +1732,20 @@ elif modulo == "🚗 Vehículos":
                     "Descripción de la incidencia *",
                     placeholder="Describa la falla o incidencia...",
                     height=120,
-                    key="vehiculo_descripcion"
+                    key=f"vehiculo_descripcion_{vehiculo_form_version}"
                 )
 
             with col_estado:
                 estado = st.selectbox(
                     "Estado *",
                     ["PENDIENTE", "REPUESTO"],
-                    key="vehiculo_estado"
+                    key=f"vehiculo_estado_{vehiculo_form_version}"
                 )
 
             observaciones = st.text_area(
                 "Observaciones",
                 placeholder="Ej. Se asignó otra camioneta...",
-                key="vehiculo_observaciones"
+                key=f"vehiculo_observaciones_{vehiculo_form_version}"
             )
 
             guardar = st.form_submit_button(
@@ -1793,8 +1798,11 @@ elif modulo == "🚗 Vehículos":
                     )
 
                     if ok:
-                        st.session_state["_sigir_reset_prefijos"] = ["vehiculo_"]
-                        st.session_state["_sigir_mensaje_guardado"] = "✅ " + mensaje + " Los campos del formulario de Vehículos se limpiaron para registrar otra incidencia."
+                        st.session_state["vehiculo_form_version"] += 1
+                        st.session_state["_sigir_mensaje_guardado"] = (
+                            "✅ " + mensaje +
+                            " El formulario de Vehículos está listo para un nuevo registro."
+                        )
                         st.rerun()
                     else:
                         st.error(mensaje)
@@ -1813,6 +1821,10 @@ elif modulo == "🚗 Vehículos":
 # =====================================================
 
 elif modulo == "📦 Materiales":
+
+    if "material_form_version" not in st.session_state:
+        st.session_state["material_form_version"] = 0
+    material_form_version = st.session_state["material_form_version"]
 
     st.subheader("📦 Registro de materiales, equipos y herramientas")
 
@@ -1836,7 +1848,7 @@ elif modulo == "📦 Materiales":
             contrato = st.selectbox(
                 "Contrato *",
                 ["Seleccione..."] + contratos_materiales,
-                key="material_contrato"
+                key=f"material_contrato_{material_form_version}"
             )
 
         registros_contrato = (
@@ -1855,7 +1867,7 @@ elif modulo == "📦 Materiales":
             uunn = st.selectbox(
                 "UUNN *",
                 ["Seleccione..."] + uunn_disponibles_material,
-                key="material_uunn"
+                key=f"material_uunn_{material_form_version}"
             )
 
         localidades_disponibles = sorted({
@@ -1873,7 +1885,7 @@ elif modulo == "📦 Materiales":
             localidad = st.selectbox(
                 "Localidad *",
                 ["Seleccione..."] + localidades_disponibles,
-                key=f"material_localidad_{uunn_token_material}",
+                key=f"material_localidad_{material_form_version}_{uunn_token_material}",
                 disabled=(uunn == "Seleccione..." or not localidades_disponibles)
             )
 
@@ -1893,7 +1905,7 @@ elif modulo == "📦 Materiales":
             tipo_seleccionado = st.selectbox(
                 "Tipo *",
                 opciones_tipo,
-                key="material_tipo",
+                key=f"material_tipo_{material_form_version}",
                 disabled=(contrato == "Seleccione...")
             )
 
@@ -1914,7 +1926,7 @@ elif modulo == "📦 Materiales":
                 material = st.text_input(
                     "Material, equipo o herramienta *",
                     placeholder="Escribe el material o herramienta...",
-                    key="material_descripcion_otro"
+                    key=f"material_descripcion_otro_{material_form_version}"
                 ).strip()
 
             # Para un tipo libre no existe unidad asociada al padrón.
@@ -1930,7 +1942,7 @@ elif modulo == "📦 Materiales":
                 material = st.selectbox(
                     "Material, equipo o herramienta *",
                     ["Seleccione..."] + descripciones_disponibles,
-                    key="material_descripcion",
+                    key=f"material_descripcion_{material_form_version}",
                     disabled=(tipo_seleccionado == "Seleccione...")
                 )
 
@@ -1948,7 +1960,7 @@ elif modulo == "📦 Materiales":
                     "UNIDAD_MEDIDA",
                     value=unidad_medida,
                     disabled=True,
-                    key=f"material_unidad_medida_{normalizar_clave(material)}"
+                    key=f"material_unidad_medida_{material_form_version}_{normalizar_clave(material)}"
                 )
 
         with col_cantidad:
@@ -1957,7 +1969,7 @@ elif modulo == "📦 Materiales":
                 min_value=1,
                 step=1,
                 value=1,
-                key="material_cantidad"
+                key=f"material_cantidad_{material_form_version}"
             )
 
         # FILA 3: Fecha de inicio, Tipo de incidencia y Estado
@@ -1967,7 +1979,7 @@ elif modulo == "📦 Materiales":
             fecha_inicio = st.date_input(
                 "Fecha de inicio *",
                 format="DD/MM/YYYY",
-                key="material_fecha_inicio"
+                key=f"material_fecha_inicio_{material_form_version}"
             )
 
         with col_incidencia:
@@ -1982,7 +1994,7 @@ elif modulo == "📦 Materiales":
                     "ROBO",
                     "OTRO"
                 ],
-                key="material_tipo_incidencia"
+                key=f"material_tipo_incidencia_{material_form_version}"
             )
 
         with col_estado:
@@ -1992,7 +2004,7 @@ elif modulo == "📦 Materiales":
                     "PENDIENTE",
                     "REPUESTO"
                 ],
-                key="material_estado"
+                key=f"material_estado_{material_form_version}"
             )
 
         # FILA 4: Observaciones a todo el ancho
@@ -2000,13 +2012,13 @@ elif modulo == "📦 Materiales":
             "Observaciones",
             placeholder="Ej. Se recibieron 20 unidades.",
             height=120,
-            key="material_observaciones"
+            key=f"material_observaciones_{material_form_version}"
         )
 
         guardar = st.button(
             "💾 GUARDAR REGISTRO",
             use_container_width=True,
-            key="guardar_material"
+            key=f"guardar_material_{material_form_version}"
         )
 
         if guardar:
@@ -2056,8 +2068,11 @@ elif modulo == "📦 Materiales":
                 )
 
                 if ok:
-                    st.session_state["_sigir_reset_prefijos"] = ["material_"]
-                    st.session_state["_sigir_mensaje_guardado"] = "✅ " + mensaje + " Los campos del formulario de Materiales se limpiaron para registrar otra incidencia."
+                    st.session_state["material_form_version"] += 1
+                    st.session_state["_sigir_mensaje_guardado"] = (
+                        "✅ " + mensaje +
+                        " El formulario de Materiales está listo para un nuevo registro."
+                    )
                     st.rerun()
                 else:
                     st.error(mensaje)
