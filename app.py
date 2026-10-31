@@ -887,7 +887,7 @@ def interfaz_actualizar_registros():
 HEADERS_PERSONAL = [
     "CONTRATO",
     "LOCALIDAD",
-    "UUNN/SSEE",
+    "UUNN",
     "PERSONAL",
     "DNI",
     "CARGO",
