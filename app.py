@@ -257,9 +257,9 @@ def cargar_padron_personal():
 @st.cache_data(ttl=300)
 def cargar_ubicaciones_padron_personal():
     """
-    Lee únicamente UUNN y LOCALIDAD del padrón maestro de personal.
-    Permite alimentar el formulario de Materiales aunque otras columnas
-    del registro de personal estén vacías.
+    Lee CONTRATO (columna A), UUNN (columna B) y LOCALIDAD (columna C)
+    directamente del padrón maestro de personal. No exige que las demás
+    columnas del trabajador estén completas.
     """
     credenciales = Credentials.from_service_account_info(
         dict(st.secrets["gcp_service_account"]),
@@ -272,43 +272,51 @@ def cargar_ubicaciones_padron_personal():
     valores = hoja.get_all_values()
     if not valores or len(valores) < 2:
         raise ValueError(
-            "El padrón de personal no contiene encabezados y registros "
+            "El padrón maestro de personal no contiene encabezados y registros "
             "en la primera pestaña."
         )
 
     encabezados = [normalizar_clave(x) for x in valores[0]]
-    requeridas = {"UUNN": "UUNN", "LOCALIDAD": "LOCALIDAD"}
+    requeridas = {"CONTRATO": "CONTRATO", "UUNN": "UUNN", "LOCALIDAD": "LOCALIDAD"}
     indices = {}
-
     for clave, etiqueta in requeridas.items():
         if clave not in encabezados:
             raise ValueError(
-                f"No se encontró la columna '{etiqueta}' en el padrón de personal."
+                f"No se encontró la columna '{etiqueta}' en el padrón maestro de personal."
             )
         indices[clave] = encabezados.index(clave)
 
     salida = []
     vistos = set()
-
     for fila in valores[1:]:
-        uunn = str(fila[indices["UUNN"]]).strip() if indices["UUNN"] < len(fila) else ""
-        localidad = str(fila[indices["LOCALIDAD"]]).strip() if indices["LOCALIDAD"] < len(fila) else ""
-
-        if not uunn or not localidad:
+        if not any(str(celda).strip() for celda in fila):
             continue
 
-        clave = (uunn.upper(), localidad.upper())
-        if clave in vistos:
+        registro = {
+            clave: str(fila[indice]).strip() if indice < len(fila) else ""
+            for clave, indice in indices.items()
+        }
+        contrato = registro["CONTRATO"]
+        uunn = registro["UUNN"].upper()
+        localidad = registro["LOCALIDAD"]
+        if not all([contrato, uunn, localidad]):
             continue
 
-        vistos.add(clave)
-        salida.append({"UUNN": uunn.upper(), "LOCALIDAD": localidad})
+        clave_unica = (normalizar(contrato), normalizar(uunn), normalizar(localidad))
+        if clave_unica in vistos:
+            continue
+        vistos.add(clave_unica)
+        salida.append({
+            "CONTRATO": contrato,
+            "UUNN": uunn,
+            "LOCALIDAD": localidad
+        })
 
     if not salida:
         raise ValueError(
-            "No se encontraron valores de UUNN y LOCALIDAD en el padrón de personal."
+            "No se encontraron combinaciones completas de CONTRATO, UUNN y LOCALIDAD "
+            "en las columnas A, B y C del padrón maestro."
         )
-
     return salida
 
 
@@ -1911,23 +1919,21 @@ elif modulo == "📦 Materiales":
     )
 
     try:
+        # El contrato, la UUNN y la localidad del formulario se obtienen
+        # exclusivamente del padrón maestro de personal (columnas A, B y C).
+        padron_ubicaciones = filtrar_por_contrato_asignado(
+            cargar_ubicaciones_padron_personal()
+        )
+
+        # El catálogo de tipo/material/unidad continúa viniendo del padrón
+        # específico de materiales.
         padron_materiales = filtrar_por_contrato_asignado(
             cargar_padron_materiales()
         )
-        padron_personal_materiales = filtrar_por_contrato_asignado(
-            cargar_padron_personal()
-        )
-        padron_ubicaciones = [
-            {
-                "CONTRATO": fila["CONTRATO"],
-                "UUNN": fila["UUNN"],
-                "LOCALIDAD": fila["LOCALIDAD"]
-            }
-            for fila in padron_personal_materiales
-        ]
 
         contratos_materiales = sorted({
-            fila["CONTRATO"] for fila in padron_materiales
+            fila["CONTRATO"] for fila in padron_ubicaciones
+            if fila.get("CONTRATO")
         })
 
         # FILA 1: Contrato, UUNN y Localidad
