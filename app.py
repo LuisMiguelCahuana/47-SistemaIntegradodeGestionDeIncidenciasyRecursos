@@ -373,7 +373,10 @@ def cargar_padron_materiales():
         descripcion = valor_columna("DESCRIPCION")
         unidad = valor_columna("UNIDADMEDIDA")
 
-        if not all([contrato, tipo, descripcion, unidad]):
+        # Para alimentar los desplegables basta con que existan contrato,
+        # tipo y descripción. La unidad de medida puede estar vacía en el
+        # catálogo y no debe impedir que aparezcan el tipo o el material.
+        if not all([contrato, tipo, descripcion]):
             continue
 
         salida.append({
@@ -1989,9 +1992,13 @@ elif modulo == "📦 Materiales":
                 disabled=(uunn == "Seleccione..." or not localidades_disponibles)
             )
 
-        # FILA 2: Tipo, Material, Unidad de medida y Cantidad faltante
+        # FILA 2: Tipo, Material, Unidad de medida y Cantidad faltante.
+        # Los desplegables se alimentan del padrón externo de Materiales:
+        # TIPO_INSPECCION -> Tipo; DESCRIPCION -> Material/equipo/herramienta.
+        # La opción Otro se conserva para permitir el ingreso manual.
         tipos_disponibles = sorted({
             fila["TIPO_INSPECCION"] for fila in registros_contrato
+            if fila.get("TIPO_INSPECCION")
         })
         opciones_tipo = ["Seleccione..."] + tipos_disponibles
         if "Otro" not in opciones_tipo and "OTRO" not in opciones_tipo:
@@ -2036,6 +2043,7 @@ elif modulo == "📦 Materiales":
         else:
             descripciones_disponibles = sorted({
                 fila["DESCRIPCION"] for fila in registros_tipo
+                if fila.get("DESCRIPCION")
             })
 
             with col_material:
