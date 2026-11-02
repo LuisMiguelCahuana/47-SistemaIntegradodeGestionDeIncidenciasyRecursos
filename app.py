@@ -564,6 +564,42 @@ def guardar_registro(nombre_hoja, encabezados, datos):
         return False, str(e)
 
 
+def subir_evidencia_cloudinary(archivo, carpeta):
+    """Sube evidencia opcional a Cloudinary y devuelve su URL segura."""
+    if archivo is None:
+        return ""
+
+    try:
+        import cloudinary
+        import cloudinary.uploader
+
+        config = st.secrets.get("cloudinary", {})
+        cloud_name = config.get("cloud_name")
+        api_key = config.get("api_key")
+        api_secret = config.get("api_secret")
+
+        if not all([cloud_name, api_key, api_secret]):
+            raise ValueError(
+                "Falta configurar [cloudinary] en Streamlit Secrets."
+            )
+
+        cloudinary.config(
+            cloud_name=cloud_name,
+            api_key=api_key,
+            api_secret=api_secret,
+            secure=True
+        )
+        resultado = cloudinary.uploader.upload(
+            archivo,
+            folder=f"SIGIR/{carpeta}",
+            resource_type="image",
+            overwrite=False
+        )
+        return resultado.get("secure_url", "")
+    except Exception as exc:
+        raise RuntimeError(f"No se pudo subir la evidencia a Cloudinary: {exc}")
+
+
 def fecha_texto(fecha):
 
     if fecha is None:
@@ -1294,7 +1330,8 @@ HEADERS_VEHICULO = [
     "FECHA_REPOSICION",
     "ESTADO",
     "OBSERVACIONES",
-    "FECHA_ACTUALIZACION"
+    "FECHA_ACTUALIZACION",
+    "EVIDENCIA_FOTOGRAFICA"
 ]
 
 HEADERS_MATERIAL = [
@@ -1309,7 +1346,8 @@ HEADERS_MATERIAL = [
     "FECHA_INICIO",
     "FECHA_REPOSICION",
     "ESTADO",
-    "OBSERVACIONES"
+    "OBSERVACIONES",
+    "EVIDENCIA_FOTOGRAFICA"
 ]
 
 
@@ -1865,6 +1903,14 @@ elif modulo == "🚗 Vehículos":
                 key=f"vehiculo_observaciones_{vehiculo_form_version}"
             )
 
+            evidencia_fotografica = st.file_uploader(
+                "EVIDENCIA FOTOGRÁFICA (opcional)",
+                type=["jpg", "jpeg", "png", "webp"],
+                accept_multiple_files=False,
+                key=f"vehiculo_evidencia_{vehiculo_form_version}",
+                help="Adjunta una fotografía del vehículo o de la avería. Se guardará en Cloudinary."
+            )
+
             guardar = st.form_submit_button(
                 "💾 GUARDAR REGISTRO",
                 use_container_width=True
@@ -1895,7 +1941,16 @@ elif modulo == "🚗 Vehículos":
 
                 elif conexion_ok:
 
-                    datos = {
+                    try:
+                        url_evidencia = subir_evidencia_cloudinary(
+                            evidencia_fotografica, "Vehiculos"
+                        )
+                    except Exception as error_evidencia:
+                        st.error(str(error_evidencia))
+                        url_evidencia = None
+
+                    if url_evidencia is not None:
+                        datos = {
                         "CONTRATO": contrato,
                         "UUNN": uunn,
                         "SSEE": ssee,
@@ -1905,24 +1960,25 @@ elif modulo == "🚗 Vehículos":
                         "FECHA_REPORTE": fecha_texto(fecha_reporte),
                         "FECHA_REPOSICION": "",
                         "ESTADO": estado,
-                        "OBSERVACIONES": observaciones.strip()
-                    }
+                        "OBSERVACIONES": observaciones.strip(),
+                        "EVIDENCIA_FOTOGRAFICA": url_evidencia
+                        }
 
-                    ok, mensaje = guardar_registro(
-                        "Vehiculo",
-                        HEADERS_VEHICULO,
-                        datos
-                    )
-
-                    if ok:
-                        st.session_state["vehiculo_form_version"] += 1
-                        st.session_state["_sigir_mensaje_guardado"] = (
-                            "✅ " + mensaje +
-                            " El formulario de Vehículos está listo para un nuevo registro."
+                        ok, mensaje = guardar_registro(
+                            "Vehiculo",
+                            HEADERS_VEHICULO,
+                            datos
                         )
-                        st.rerun()
-                    else:
-                        st.error(mensaje)
+
+                        if ok:
+                            st.session_state["vehiculo_form_version"] += 1
+                            st.session_state["_sigir_mensaje_guardado"] = (
+                                "✅ " + mensaje +
+                                " El formulario de Vehículos está listo para un nuevo registro."
+                            )
+                            st.rerun()
+                        else:
+                            st.error(mensaje)
 
     except Exception as e:
         st.error(
@@ -2151,6 +2207,14 @@ elif modulo == "📦 Materiales":
             key=f"material_observaciones_{material_form_version}"
         )
 
+        evidencia_fotografica = st.file_uploader(
+            "EVIDENCIA FOTOGRÁFICA (opcional)",
+            type=["jpg", "jpeg", "png", "webp"],
+            accept_multiple_files=False,
+            key=f"material_evidencia_{material_form_version}",
+            help="Adjunta una fotografía del material, equipo o herramienta. Se guardará en Cloudinary."
+        )
+
         guardar = st.button(
             "💾 GUARDAR REGISTRO",
             use_container_width=True,
@@ -2182,7 +2246,16 @@ elif modulo == "📦 Materiales":
 
             elif conexion_ok:
 
-                datos = {
+                try:
+                    url_evidencia = subir_evidencia_cloudinary(
+                        evidencia_fotografica, "Materiales"
+                    )
+                except Exception as error_evidencia:
+                    st.error(str(error_evidencia))
+                    url_evidencia = None
+
+                if url_evidencia is not None:
+                    datos = {
                     "CONTRATO": contrato,
                     "UUNN": uunn,
                     "LOCALIDAD": localidad,
@@ -2194,24 +2267,25 @@ elif modulo == "📦 Materiales":
                     "FECHA_INICIO": fecha_texto(fecha_inicio),
                     "FECHA_REPOSICION": "",
                     "ESTADO": estado,
-                    "OBSERVACIONES": observaciones.strip()
-                }
+                    "OBSERVACIONES": observaciones.strip(),
+                    "EVIDENCIA_FOTOGRAFICA": url_evidencia
+                    }
 
-                ok, mensaje = guardar_registro(
-                    "Material",
-                    HEADERS_MATERIAL,
-                    datos
-                )
-
-                if ok:
-                    st.session_state["material_form_version"] += 1
-                    st.session_state["_sigir_mensaje_guardado"] = (
-                        "✅ " + mensaje +
-                        " El formulario de Materiales está listo para un nuevo registro."
+                    ok, mensaje = guardar_registro(
+                        "Material",
+                        HEADERS_MATERIAL,
+                        datos
                     )
-                    st.rerun()
-                else:
-                    st.error(mensaje)
+
+                    if ok:
+                        st.session_state["material_form_version"] += 1
+                        st.session_state["_sigir_mensaje_guardado"] = (
+                            "✅ " + mensaje +
+                            " El formulario de Materiales está listo para un nuevo registro."
+                        )
+                        st.rerun()
+                    else:
+                        st.error(mensaje)
 
     except Exception as e:
         st.error(
