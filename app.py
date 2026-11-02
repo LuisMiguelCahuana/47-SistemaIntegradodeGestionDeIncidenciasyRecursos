@@ -1495,7 +1495,7 @@ elif modulo == "👤 Personal":
 
         with col_uunn:
             uunn = st.selectbox(
-                "UUNN/SSEE *",
+                "UUNN *",
                 ["Seleccione..."] + uunn_disponibles,
                 key=uunn_key,
                 disabled=(contrato == "Seleccione...")
