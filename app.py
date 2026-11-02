@@ -422,24 +422,48 @@ def usuario_tiene_todos_los_contratos():
     return normalizar(contrato_asignado_usuario()) == "TODOS"
 
 
-def usuario_puede_ver_contrato(contrato):
-    """Autorización central: el usuario solo accede a su contrato asignado."""
-    asignado = contrato_asignado_usuario()
-    if not asignado:
-        return False
+def uunn_asignada_usuario():
+    return str(st.session_state.get("uunn_usuario", "")).strip()
+
+
+def valor_dentro_de_asignacion(valor, asignado):
+    """TODOS permite cualquier valor; una asignación vacía no concede acceso."""
     if normalizar(asignado) == "TODOS":
         return True
-    return normalizar(contrato) == normalizar(asignado)
+    if not asignado:
+        return False
+    return normalizar(valor) == normalizar(asignado)
+
+
+def usuario_puede_ver_contrato(contrato):
+    return valor_dentro_de_asignacion(
+        contrato, contrato_asignado_usuario()
+    )
+
+
+def obtener_uunn_registro(registro):
+    """Admite los encabezados UUNN y UUNN/SSEE del módulo Personal."""
+    return (
+        registro.get("UUNN", "")
+        or registro.get("UUNN/SSEE", "")
+        or registro.get("UUNNSSEE", "")
+    )
+
+
+def usuario_puede_ver_registro(registro):
+    """La autorización operativa se limita exclusivamente a CONTRATO y UUNN."""
+    if not usuario_puede_ver_contrato(registro.get("CONTRATO", "")):
+        return False
+
+    return valor_dentro_de_asignacion(
+        obtener_uunn_registro(registro),
+        uunn_asignada_usuario()
+    )
 
 
 def filtrar_por_contrato_asignado(registros):
-    """Filtra registros de padrones por el contrato de la sesión activa."""
-    if usuario_tiene_todos_los_contratos():
-        return registros
-    return [
-        registro for registro in registros
-        if usuario_puede_ver_contrato(registro.get("CONTRATO", ""))
-    ]
+    """Filtra padrones por contrato y UUNN asignados al usuario."""
+    return [registro for registro in registros if usuario_puede_ver_registro(registro)]
 
 
 def normalizar_encabezado(texto):
@@ -459,10 +483,10 @@ def guardar_registro(nombre_hoja, encabezados, datos):
     if not verificar_permiso("REGISTRAR"):
         return False, "No tienes permiso para registrar incidencias."
 
-    if not usuario_puede_ver_contrato(datos.get("CONTRATO", "")):
+    if not usuario_puede_ver_registro(datos):
         return False, (
-            "Acceso denegado: no puedes registrar información de un contrato "
-            "distinto al que tienes asignado."
+            "Acceso denegado: el registro no corresponde al contrato, UUNN "
+            "o localidad asignados a tu usuario."
         )
 
     try:
@@ -586,7 +610,9 @@ def obtener_usuarios():
             "NOMBRE": str(registro.get("NOMBRE", "")).strip(),
             "PERMISOS": str(registro.get("PERMISOS", "")).strip().upper(),
             "ACTIVO": str(registro.get("ACTIVO", "")).strip().upper(),
-            "CONTRATO": str(registro.get("CONTRATO", "")).strip()
+            "CONTRATO": str(registro.get("CONTRATO", "")).strip(),
+            "UUNN": str(registro.get("UUNN", "")).strip(),
+            "LOCALIDAD": str(registro.get("LOCALIDAD", "")).strip()
         }
 
     return usuarios
@@ -627,7 +653,8 @@ def cerrar_sesion():
         "usuario",
         "nombre_usuario",
         "permisos_usuario",
-        "contrato_usuario"
+        "contrato_usuario",
+        "uunn_usuario"
     ):
         st.session_state.pop(clave, None)
 
@@ -820,11 +847,20 @@ def mostrar_inicio_sesion():
                     return
 
                 contrato_asignado = datos.get("CONTRATO", "").strip()
+                uunn_asignada = datos.get("UUNN", "").strip()
                 if not contrato_asignado:
                     st.error(
                         "Tu usuario no tiene un contrato asignado. "
                         "Solicita al administrador que complete la columna CONTRATO "
                         "en la hoja de usuarios. Para el administrador general utiliza TODOS."
+                    )
+                    return
+
+                if not uunn_asignada:
+                    st.error(
+                        "Tu usuario no tiene una UUNN asignada. "
+                        "Completa la columna UUNN en la hoja de usuarios. "
+                        "Para el administrador general utiliza TODOS."
                     )
                     return
 
@@ -843,6 +879,7 @@ def mostrar_inicio_sesion():
                 )
                 st.session_state["permisos_usuario"] = permisos
                 st.session_state["contrato_usuario"] = contrato_asignado
+                st.session_state["uunn_usuario"] = uunn_asignada
                 st.rerun()
 
             except Exception as error:
@@ -951,14 +988,19 @@ def interfaz_actualizar_registros():
 
         for numero_fila, fila in enumerate(valores[1:], start=2):
             estado_actual = fila[idx_estado].strip().upper() if idx_estado < len(fila) else ""
-            if (
-                estado_actual == "PENDIENTE"
-                and usuario_puede_ver_contrato(
-                    fila[buscar_columna(encabezados, "CONTRATO") - 1]
-                    if buscar_columna(encabezados, "CONTRATO") - 1 < len(fila)
-                    else ""
+            registro_fila = {
+                normalizar_encabezado(encabezados[i]): (
+                    fila[i] if i < len(fila) else ""
                 )
-            ):
+                for i in range(len(encabezados))
+            }
+            if estado_actual == "PENDIENTE" and usuario_puede_ver_registro({
+                "CONTRATO": registro_fila.get(normalizar_encabezado("CONTRATO"), ""),
+                "UUNN": (
+                    registro_fila.get(normalizar_encabezado("UUNN"), "")
+                    or registro_fila.get(normalizar_encabezado("UUNN/SSEE"), "")
+                )
+            }):
                 filas_pendientes.append((numero_fila, fila))
 
         if not filas_pendientes:
@@ -976,18 +1018,14 @@ def interfaz_actualizar_registros():
                 return ""
             return str(fila[indice]).strip()
 
-        # Filtros rápidos en una sola fila.
-        # Vehículos utiliza SSEE; Personal y Materiales utilizan Localidad.
-        campo_tercer_filtro = "SSEE" if tipo == "Vehículo" else "LOCALIDAD"
-        etiqueta_tercer_filtro = "SSEE" if tipo == "Vehículo" else "Localidad"
-
+        # Filtros rápidos: únicamente Contrato y UUNN.
         contratos_filtro = sorted({
             obtener_valor_fila(fila, "CONTRATO")
             for _, fila in filas_pendientes
             if obtener_valor_fila(fila, "CONTRATO")
         })
 
-        col_f_contrato, col_f_uunn, col_f_tercero = st.columns(3)
+        col_f_contrato, col_f_uunn = st.columns(2)
 
         with col_f_contrato:
             if usuario_tiene_todos_los_contratos():
@@ -1008,45 +1046,35 @@ def interfaz_actualizar_registros():
         filas_por_contrato = [
             (n, f) for n, f in filas_pendientes
             if contrato_filtro == "Todos"
-            or obtener_valor_fila(f, "CONTRATO") == contrato_filtro
+            or normalizar(obtener_valor_fila(f, "CONTRATO")) == normalizar(contrato_filtro)
         ]
 
         uunn_filtro_opciones = sorted({
-            obtener_valor_fila(f, "UUNN")
+            obtener_valor_fila(f, "UUNN") or obtener_valor_fila(f, "UUNN/SSEE")
             for _, f in filas_por_contrato
-            if obtener_valor_fila(f, "UUNN")
+            if obtener_valor_fila(f, "UUNN") or obtener_valor_fila(f, "UUNN/SSEE")
         })
 
         with col_f_uunn:
-            uunn_filtro = st.selectbox(
-                "UUNN",
-                ["Todas"] + uunn_filtro_opciones,
-                key=f"actualizar_uunn_{tipo}"
-            )
-
-        filas_por_uunn = [
-            (n, f) for n, f in filas_por_contrato
-            if uunn_filtro == "Todas"
-            or obtener_valor_fila(f, "UUNN") == uunn_filtro
-        ]
-
-        tercer_filtro_opciones = sorted({
-            obtener_valor_fila(f, campo_tercer_filtro)
-            for _, f in filas_por_uunn
-            if obtener_valor_fila(f, campo_tercer_filtro)
-        })
-
-        with col_f_tercero:
-            tercer_filtro = st.selectbox(
-                etiqueta_tercer_filtro,
-                ["Todas"] + tercer_filtro_opciones,
-                key=f"actualizar_tercer_filtro_{tipo}"
-            )
+            if normalizar(uunn_asignada_usuario()) == "TODOS":
+                uunn_filtro = st.selectbox(
+                    "UUNN",
+                    ["Todas"] + uunn_filtro_opciones,
+                    key=f"actualizar_uunn_{tipo}"
+                )
+            else:
+                uunn_filtro = uunn_asignada_usuario()
+                st.text_input(
+                    "UUNN asignada",
+                    value=uunn_filtro,
+                    disabled=True,
+                    key=f"actualizar_uunn_bloqueada_{tipo}"
+                )
 
         filas_filtradas = [
-            (n, f) for n, f in filas_por_uunn
-            if tercer_filtro == "Todas"
-            or obtener_valor_fila(f, campo_tercer_filtro) == tercer_filtro
+            (n, f) for n, f in filas_por_contrato
+            if normalizar(uunn_filtro) == "TODAS"
+            or normalizar(obtener_valor_fila(f, "UUNN") or obtener_valor_fila(f, "UUNN/SSEE")) == normalizar(uunn_filtro)
         ]
 
         if not filas_filtradas:
@@ -1058,9 +1086,6 @@ def interfaz_actualizar_registros():
             "FILA": lambda f, n: n,
             "CONTRATO": lambda f, n: obtener_valor_fila(f, "CONTRATO"),
             "UUNN": lambda f, n: obtener_valor_fila(f, "UUNN"),
-            etiqueta_tercer_filtro.upper(): lambda f, n: obtener_valor_fila(
-                f, campo_tercer_filtro
-            ),
             "RECURSO": lambda f, n: (
                 obtener_valor_fila(f, "PERSONAL")
                 or obtener_valor_fila(f, "PLACA")
@@ -1084,7 +1109,7 @@ def interfaz_actualizar_registros():
         st.markdown("**Incidencias pendientes — selecciona una fila para actualizar**")
         st.caption(
             f"Se muestran {len(filas_filtradas)} incidencias pendientes. "
-            f"Puedes filtrar por contrato, UUNN y {etiqueta_tercer_filtro}."
+            "Puedes filtrar por contrato y UUNN."
         )
 
         seleccion_tabla = st.dataframe(
@@ -1164,12 +1189,17 @@ def interfaz_actualizar_registros():
             if confirmar:
                 if not verificar_permiso("ACTUALIZAR"):
                     st.error("No tienes permiso para actualizar incidencias.")
-                elif not usuario_puede_ver_contrato(
-                    datos_fila.get(normalizar_encabezado("CONTRATO"), "")
-                ):
+                elif not usuario_puede_ver_registro({
+                    "CONTRATO": datos_fila.get(normalizar_encabezado("CONTRATO"), ""),
+                    "UUNN": (
+                        datos_fila.get(normalizar_encabezado("UUNN"), "")
+                        or datos_fila.get(normalizar_encabezado("UUNN/SSEE"), "")
+                        or datos_fila.get(normalizar_encabezado("UUNNSSEE"), "")
+                    )
+                }):
                     st.error(
-                        "Acceso denegado: el registro seleccionado no pertenece "
-                        "al contrato asignado a tu usuario."
+                        "Acceso denegado: el registro no pertenece al contrato "
+                        "y UUNN asignados a tu usuario."
                     )
                 elif nuevo_estado == "REPUESTO" and not registrar_fecha:
                     st.warning(
@@ -1318,9 +1348,8 @@ st.sidebar.caption(
         sorted(st.session_state.get("permisos_usuario", set()))
     )
 )
-st.sidebar.caption(
-    "Contrato asignado: " + contrato_asignado_usuario()
-)
+st.sidebar.caption("Contrato asignado: " + contrato_asignado_usuario())
+st.sidebar.caption("UUNN asignada: " + uunn_asignada_usuario())
 
 if st.sidebar.button("🚪 CERRAR SESIÓN", use_container_width=True):
     cerrar_sesion()
