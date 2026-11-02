@@ -1698,7 +1698,7 @@ elif modulo == "👤 Personal":
                     datos = {
                         "CONTRATO": contrato.strip(),
                         "LOCALIDAD": localidad,
-                        "UUNN/SSEE": uunn,
+                        "UUNN": uunn,
                         "PERSONAL": personal.strip().upper(),
                         "DNI": dni,
                         "CARGO": cargo.strip().upper(),
