@@ -1928,11 +1928,11 @@ elif modulo == "📦 Materiales":
             cargar_ubicaciones_padron_personal()
         )
 
-        # El catálogo de tipo/material/unidad continúa viniendo del padrón
-        # específico de materiales.
-        padron_materiales = filtrar_por_contrato_asignado(
-            cargar_padron_materiales()
-        )
+        # El catálogo de Tipo/Material/Unidad se carga completo, sin depender
+        # del contrato, UUNN ni localidad seleccionados en el formulario.
+        # La restricción por contrato se aplica a los registros operativos,
+        # no a las opciones maestras del catálogo.
+        padron_materiales = cargar_padron_materiales()
 
         contratos_materiales = sorted({
             fila["CONTRATO"] for fila in padron_ubicaciones
@@ -1997,7 +1997,7 @@ elif modulo == "📦 Materiales":
         # TIPO_INSPECCION -> Tipo; DESCRIPCION -> Material/equipo/herramienta.
         # La opción Otro se conserva para permitir el ingreso manual.
         tipos_disponibles = sorted({
-            fila["TIPO_INSPECCION"] for fila in registros_contrato
+            fila["TIPO_INSPECCION"] for fila in padron_materiales
             if fila.get("TIPO_INSPECCION")
         })
         opciones_tipo = ["Seleccione..."] + tipos_disponibles
@@ -2012,8 +2012,7 @@ elif modulo == "📦 Materiales":
             tipo_seleccionado = st.selectbox(
                 "Tipo *",
                 opciones_tipo,
-                key=f"material_tipo_{material_form_version}",
-                disabled=(contrato == "Seleccione...")
+                key=f"material_tipo_{material_form_version}"
             )
 
         es_tipo_otro = tipo_seleccionado.strip().upper() == "OTRO"
@@ -2021,7 +2020,7 @@ elif modulo == "📦 Materiales":
 
         registros_tipo = (
             [
-                fila for fila in registros_contrato
+                fila for fila in padron_materiales
                 if fila["TIPO_INSPECCION"] == tipo_seleccionado
             ]
             if tipo_seleccionado != "Seleccione..." and not es_tipo_otro
