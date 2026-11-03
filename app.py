@@ -1207,8 +1207,8 @@ def interfaz_actualizar_registros():
             with col_estado:
                 nuevo_estado = st.selectbox(
                     "Estado",
-                    ["PENDIENTE", "REPUESTO"],
-                    index=1 if estado_actual == "REPUESTO" else 0
+                    ["PENDIENTE", "ATENDIDO"],
+                    index=1 if estado_actual == "ATENDIDO" else 0
                 )
 
             nuevas_observaciones = st.text_area(
@@ -1237,10 +1237,10 @@ def interfaz_actualizar_registros():
                         "Acceso denegado: el registro no pertenece al contrato "
                         "y UUNN asignados a tu usuario."
                     )
-                elif nuevo_estado == "REPUESTO" and not registrar_fecha:
+                elif nuevo_estado == "ATENDIDO" and not registrar_fecha:
                     st.warning(
                         "Marca la casilla para guardar la fecha real antes de "
-                        "cambiar el estado a REPUESTO."
+                        "cambiar el estado a ATENDIDO."
                     )
                 else:
                     try:
@@ -1606,7 +1606,7 @@ elif modulo == "👤 Personal":
                     "Estado *",
                     [
                         "PENDIENTE",
-                        "REPUESTO"
+                        "ATENDIDO"
                     ],
                     key=f"personal_estado_{personal_form_version}"
                 )
@@ -1686,11 +1686,11 @@ elif modulo == "👤 Personal":
                         "ser anterior a la fecha de salida."
                     )
 
-                elif estado == "REPUESTO":
+                elif estado == "ATENDIDO":
                     st.warning(
                         "Registra inicialmente la incidencia como PENDIENTE. "
                         "Cuando se incorpore el reemplazo, utiliza 'Actualizar registros' "
-                        "para colocar la fecha real y cambiar el estado a REPUESTO."
+                        "para colocar la fecha real y cambiar el estado a ATENDIDO."
                     )
 
                 elif conexion_ok:
@@ -1893,7 +1893,7 @@ elif modulo == "🚗 Vehículos":
             with col_estado:
                 estado = st.selectbox(
                     "Estado *",
-                    ["PENDIENTE", "REPUESTO"],
+                    ["PENDIENTE", "ATENDIDO"],
                     key=f"vehiculo_estado_{vehiculo_form_version}"
                 )
 
@@ -1932,7 +1932,7 @@ elif modulo == "🚗 Vehículos":
                 elif not descripcion.strip():
                     st.warning("Completa la descripción de la incidencia.")
 
-                elif estado == "REPUESTO":
+                elif estado == "ATENDIDO":
                     st.warning(
                         "Registra inicialmente la incidencia como PENDIENTE. "
                         "Cuando el vehículo vuelva al servicio, utiliza "
@@ -2194,7 +2194,7 @@ elif modulo == "📦 Materiales":
                 "Estado *",
                 [
                     "PENDIENTE",
-                    "REPUESTO"
+                    "ATENDIDO"
                 ],
                 key=f"material_estado_{material_form_version}"
             )
@@ -2237,11 +2237,11 @@ elif modulo == "📦 Materiales":
                     "así como la UUNN y la localidad del padrón de personal, antes de guardar."
                 )
 
-            elif estado == "REPUESTO":
+            elif estado == "ATENDIDO":
                 st.warning(
                     "Registra inicialmente la incidencia como PENDIENTE. "
                     "Cuando recibas el material, utiliza 'Actualizar registros' "
-                    "para colocar la fecha real y cambiar el estado a REPUESTO."
+                    "para colocar la fecha real y cambiar el estado a ATENDIDO."
                 )
 
             elif conexion_ok:
