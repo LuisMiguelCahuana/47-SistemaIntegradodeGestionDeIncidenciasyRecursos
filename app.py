@@ -1875,7 +1875,7 @@ elif modulo == "🚗 Vehículos":
 
             with col_fecha:
                 fecha_reporte = st.date_input(
-                    "Fecha de reporte *",
+                    "Fecha del evento *",
                     format="DD/MM/YYYY",
                     key=f"vehiculo_fecha_reporte_{vehiculo_form_version}"
                 )
